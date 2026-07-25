@@ -12,8 +12,11 @@ export default function Header({ storage, theme, onTheme }) {
           </div>
         </div>
 
-        <Badge tone={storage.mode === 'firestore' ? 'good' : 'muted'} dot>
-          {storage.label}
+        <Badge
+          tone={storage.mode === 'firestore' ? 'good' : storage.mode === 'blocked' ? 'warn' : 'muted'}
+          dot
+        >
+          <span title={storage.hint}>{storage.label}</span>
         </Badge>
 
         <button className="btn btn-sm btn-ghost" type="button" onClick={onTheme} aria-label="밝기 전환" title="밝기 전환">

@@ -74,10 +74,26 @@ function reassemble(chunks) {
 
 export const usesFirestore = Boolean(isFirebaseConfigured && db)
 
-export function backendLabel() {
-  return usesFirestore
-    ? { mode: 'firestore', label: 'DB 저장', hint: '업로드한 감사보고서 전체 내용이 회사별로 Firestore에 누적됩니다.' }
-    : { mode: 'local', label: '브라우저 저장', hint: 'Firebase 설정이 없어 이 브라우저에만 저장합니다.' }
+/**
+ * 실제 쓰기 가능 여부까지 반영한 저장 상태.
+ * 설정이 붙어 있어도 규칙이 막고 있으면 DB에 안 들어가므로, 그 차이를 화면에 그대로 드러낸다.
+ *   'checking' → 아직 확인 전, 'db' → 실제 DB 누적, 'blocked' → 규칙이 막음, 'local' → 설정 없음
+ */
+export function backendLabel(state) {
+  if (!usesFirestore) {
+    return { mode: 'local', label: '브라우저 저장', hint: 'Firebase 설정이 없어 이 브라우저에만 저장합니다.' }
+  }
+  if (state === 'blocked') {
+    return {
+      mode: 'blocked',
+      label: 'DB 저장 차단됨',
+      hint: 'Firestore 보안 규칙이 접근을 막고 있어 이 브라우저에만 저장됩니다. `firebase deploy --only firestore:rules` 로 규칙을 배포해 주세요.',
+    }
+  }
+  if (state === 'db') {
+    return { mode: 'firestore', label: 'DB 저장', hint: '업로드한 감사보고서 전체 내용이 회사별로 Firestore에 누적됩니다.' }
+  }
+  return { mode: 'checking', label: 'DB 연결 확인 중', hint: 'Firestore 접근 가능 여부를 확인하고 있습니다.' }
 }
 
 /** Firestore 실패 원인을 사용자에게 그대로 보여줄 문구로 바꾼다. */
@@ -110,23 +126,31 @@ export async function saveReport(report) {
       return { report: { ...withKeys, storage: 'firestore' }, companyKey, storage: 'firestore', warning: null }
     } catch (e) {
       await saveToLocal(withKeys, companyKey, reportId)
-      return { report: { ...withKeys, storage: 'local' }, companyKey, storage: 'local', warning: firestoreHint(e) }
+      return {
+        report: { ...withKeys, storage: 'local' },
+        companyKey,
+        storage: 'local',
+        warning: firestoreHint(e),
+        dbState: e?.code === 'permission-denied' ? 'blocked' : 'local',
+      }
     }
   }
   await saveToLocal(withKeys, companyKey, reportId)
   return { report: { ...withKeys, storage: 'local' }, companyKey, storage: 'local', warning: null }
 }
 
-/** 회사 목록 (누적 문서 기준) @returns {{companies:object[], warning:string|null}} */
+/** 회사 목록 (누적 문서 기준) @returns {{companies:object[], warning:string|null, dbState:string}} */
 export async function listCompanies() {
   let cloud = []
   let warning = null
+  let dbState = usesFirestore ? 'db' : 'local'
   if (usesFirestore) {
     try {
       const snap = await getDocs(query(collection(db, COL), orderBy('updatedAt', 'desc'), limit(500)))
       cloud = snap.docs.map((d) => ({ ...d.data(), key: d.id, storage: 'firestore' }))
     } catch (e) {
       warning = firestoreHint(e)
+      dbState = e?.code === 'permission-denied' ? 'blocked' : 'local'
     }
   }
   const local = await listLocalCompanies()
@@ -135,7 +159,7 @@ export async function listCompanies() {
   const companies = merged
     .map((c) => companyView(c))
     .sort((a, b) => (b.uploadedAt || 0) - (a.uploadedAt || 0))
-  return { companies, warning }
+  return { companies, warning, dbState }
 }
 
 /** 특정 회사의 보고서 요약 목록 */

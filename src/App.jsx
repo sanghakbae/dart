@@ -43,7 +43,8 @@ export default function App() {
   const [theme, setTheme] = useState(() => localStorage.getItem('dart-theme') || 'auto')
   const contentReq = useRef(0)
 
-  const storage = backendLabel()
+  const [dbState, setDbState] = useState('checking')
+  const storage = backendLabel(dbState)
 
   const toast = useCallback((text, tone) => {
     const id = Math.random().toString(36).slice(2)
@@ -60,8 +61,9 @@ export default function App() {
   // 회사 목록 (누적 문서 기준)
   const refreshCompanies = useCallback(async () => {
     try {
-      const { companies: list, warning } = await listCompanies()
+      const { companies: list, warning, dbState: state } = await listCompanies()
       setCompanies(list)
+      setDbState(state)
       if (warning) toast(warning, 'warn')
     } catch (e) {
       toast(`회사 목록을 불러오지 못했습니다: ${e.message}`, 'bad')
@@ -134,7 +136,8 @@ export default function App() {
             if (msg) setPhase(`${file.name} — ${msg}`)
           })
           setPhase(`${file.name} DB에 누적 중`)
-          const { report: saved, companyKey: ck, storage: where, warning } = await saveReport(report)
+          const { report: saved, companyKey: ck, storage: where, warning, dbState: state } = await saveReport(report)
+          if (state) setDbState(state)
 
           setContent((prev) => ({
             ...prev,
@@ -244,6 +247,17 @@ export default function App() {
               phase={phase}
               compact={companies.length > 0}
             />
+
+            {dbState === 'blocked' && (
+              <Callout tone="warn">
+                <span>
+                  <strong>DB 저장이 차단된 상태입니다.</strong> Firestore 보안 규칙이 배포되지 않아 업로드한 보고서가
+                  이 브라우저에만 저장되고 다른 사람에게는 보이지 않습니다.
+                  <br />
+                  <code>firebase deploy --only firestore:rules --project dart-40a5c</code> 를 실행하면 해결됩니다.
+                </span>
+              </Callout>
+            )}
 
             {loadingList ? (
               <Card><Empty title="DB에서 회사 목록을 불러오는 중입니다…" /></Card>
