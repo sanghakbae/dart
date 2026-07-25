@@ -126,6 +126,12 @@ export function FinTable({ columns, rows, note, minWidth }) {
           <tbody>
             {rows.map((r, i) => (
               <tr key={`${r.label}-${i}`} className={`${r.level === 0 ? 'lv0' : ''} ${r.isSum ? 'sum' : ''}`.trim()}>
+                {/* 숫자가 없는 줄(기간 헤더·단위 표기·'자산' 같은 구분 줄)은 값 칸을 '-' 로
+                    채우지 않고 한 줄 전체를 쓰는 소제목으로 표시한다. */}
+                {r.span ? (
+                  <td className="lbl span" colSpan={columns.length + 1}>{r.label}</td>
+                ) : (
+                <>
                 <td className={`lbl${r.level >= 2 ? ' ind2' : r.level === 1 ? ' ind1' : ''}`}>
                   {r.label}
                   {r.derived && <span className="chip" style={{ marginLeft: 6 }}>계산값</span>}
@@ -139,6 +145,8 @@ export function FinTable({ columns, rows, note, minWidth }) {
                     </td>
                   )
                 })}
+                </>
+                )}
               </tr>
             ))}
           </tbody>

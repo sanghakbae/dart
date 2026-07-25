@@ -402,6 +402,14 @@ table.fin tr.lv0 td { font-weight: 660; }
 table.fin tr.lv0 td.lbl { font-weight: 660; }
 table.fin tr.sum td { background: var(--surface-2); }
 table.fin tr.sum td.lbl { background: var(--surface-2); }
+table.fin td.lbl.span {
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-weight: 600;
+  box-shadow: none;
+  position: static;
+  white-space: normal;
+}
 table.fin td.ind1 { padding-left: 26px; }
 table.fin td.ind2 { padding-left: 40px; }
 table.fin .neg { color: var(--critical); }

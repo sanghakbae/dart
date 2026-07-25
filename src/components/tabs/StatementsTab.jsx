@@ -84,13 +84,17 @@ function BlockCard({ block, mode, curLabel, priLabel }) {
       ? cmp
       : rows
           .filter((r) => r.kind !== 'blank')
-          .map((r, idx) => ({
-            label: r.label || (r.kind === 'numbersOnly' ? '(라벨 없음)' : '—'),
-            level: r.kind === 'header' ? 0 : 1,
-            isSum: r.kind === 'header',
-            values: Object.fromEntries((r.scaled || r.values || []).map((v, i) => [`c${i}`, v])),
-            _key: idx,
-          }))
+          .map((r) => {
+            const vals = r.scaled || r.values || []
+            return {
+              label: r.label || (r.kind === 'numbersOnly' ? '(라벨 없음)' : '—'),
+              level: r.kind === 'header' ? 0 : 1,
+              isSum: r.kind === 'header',
+              // 숫자가 없는 줄은 값 칸을 '-' 로 채우지 않고 한 줄짜리 소제목으로 표시한다.
+              span: vals.length === 0,
+              values: Object.fromEntries(vals.map((v, i) => [`c${i}`, v])),
+            }
+          })
 
   return (
     <Card
@@ -113,8 +117,17 @@ function BlockCard({ block, mode, curLabel, priLabel }) {
   )
 }
 
+/**
+ * 값 칸 개수는 최댓값이 아니라 '가장 흔한 개수'로 잡는다.
+ * 셀 분리가 어긋난 한두 줄 때문에 모든 줄에 빈 칸이 생기는 것을 막는다.
+ */
 function maxCols(rows) {
-  let n = 0
-  for (const r of rows) n = Math.max(n, (r.values || []).length)
-  return Array.from({ length: Math.min(n, 8) }, (_, i) => i)
+  const freq = new Map()
+  for (const r of rows) {
+    const n = (r.scaled || r.values || []).length
+    if (n > 0) freq.set(n, (freq.get(n) || 0) + 1)
+  }
+  if (!freq.size) return [0, 1]
+  const dominant = [...freq.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0][0]
+  return Array.from({ length: Math.min(dominant, 8) }, (_, i) => i)
 }
