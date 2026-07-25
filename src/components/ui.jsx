@@ -157,6 +157,59 @@ export function FinTable({ columns, rows, note, minWidth }) {
   )
 }
 
+/**
+ * 주석 본문. 문단은 다시 흘려 쓰고, 원문의 표는 표로 되살린다.
+ * (표를 문단으로 이어붙이면 "종업원급여 6,661,227,265 7,306,901,198 주식보상비용 …" 처럼 읽을 수 없다)
+ */
+export function NoteBody({ content, body, muted }) {
+  const blocks = Array.isArray(content) && content.length ? content : null
+  if (!blocks) return <Prose text={body} muted={muted} empty="본문 없음" />
+
+  return (
+    <div className="notebody">
+      {blocks.map((b, i) =>
+        b.type === 'table' ? (
+          <div className="tscroll" key={i}>
+            <table className="fin note">
+              {b.header && (
+                <thead>
+                  <tr>
+                    {b.header.map((h, j) => (
+                      <th key={j} className={j === 0 ? 'lbl' : undefined} scope="col">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+              )}
+              <tbody>
+                {b.rows.map((r, ri) => (
+                  <tr key={ri}>
+                    {r.map((cell, ci) => {
+                      const n = ci === 0 ? null : parseAmountish(cell)
+                      return (
+                        <td key={ci} className={ci === 0 ? 'lbl' : n != null && n < 0 ? 'neg' : undefined}>
+                          {cell || (ci === 0 ? '' : '-')}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <Prose key={i} text={b.text} muted={muted} empty="" />
+        )
+      )}
+    </div>
+  )
+}
+
+function parseAmountish(s) {
+  if (typeof s !== 'string') return null
+  if (/^\(.*\)$/.test(s.trim())) return -1
+  return null
+}
+
 export function Disclose({ summary, count, children, open }) {
   return (
     <details className="disclose" open={open}>

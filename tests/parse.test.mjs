@@ -338,6 +338,46 @@ test('회사 문서에 보고기간이 누적된다', () => {
   assert.equal(companyView(co2).trendBasis, '연결')
 })
 
+test('주석 안의 표는 문단으로 뭉개지 않고 표로 남는다', () => {
+  // 실제 감사보고서 "비용의 성격별 분류" 주석 형태 (탭이 셀 경계)
+  const d = docFromText(
+    [
+      '주석',
+      '1. 회사의 개요',
+      '당사는 시스템 소프트웨어 개발 및 공급을 목적으로 설립되었습니다.',
+      '24. 비용의 성격별 분류',
+      '당기 및 전기 중 비용의 성격별 분류에 대한 내역은 다음과 같습니다. (단위: 원)',
+      '구분\t당기\t전기',
+      '종업원급여\t6,661,227,265\t7,306,901,198',
+      '주식보상비용\t300,909,576\t180,907,185',
+      '복리후생비\t486,541,111\t609,098,175',
+      '합 계\t10,524,941,947\t11,537,599,977',
+      '위 금액은 매출원가와 판매비와관리비를 합한 금액입니다.',
+    ].join('\n')
+  )
+
+  const parsed = parseNotes(d)
+  const note = parsed.items.find((n) => n.no === 24)
+  assert.ok(note, '24번 주석 누락')
+
+  const kinds = note.content.map((b) => b.type)
+  assert.deepEqual(kinds, ['p', 'table', 'p'], `블록 구성: ${kinds.join(',')}`)
+
+  const table = note.content[1]
+  assert.deepEqual(table.header, ['구분', '당기', '전기'], '열 제목을 머리행으로 끌어올려야 한다')
+  assert.equal(table.rows.length, 4)
+  assert.deepEqual(table.rows[0], ['종업원급여', '6,661,227,265', '7,306,901,198'])
+  assert.deepEqual(table.rows[3], ['합 계', '10,524,941,947', '11,537,599,977'])
+
+  // 표 앞뒤 설명은 문단으로 남는다
+  assert.match(note.content[0].text, /성격별 분류에 대한 내역/)
+  assert.match(note.content[2].text, /매출원가와 판매비와관리비/)
+
+  // body 는 검색용으로 전체 텍스트를 그대로 보존한다
+  assert.match(note.body, /종업원급여/)
+  assert.match(note.body, /6,661,227,265/)
+})
+
 test('PDF 종이 줄바꿈을 문단으로 다시 흘린다', () => {
   // PDF 추출 결과는 종이 한 줄마다 개행이 들어 있다.
   const raw = [

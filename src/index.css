@@ -448,6 +448,12 @@ table.fin .neg { color: var(--critical); }
 }
 .seg button.on { background: var(--surface-1); color: var(--text-1); box-shadow: var(--shadow); }
 
+/* 주석 본문: 문단과 표가 섞여 있다 */
+.notebody { display: grid; gap: 14px; }
+table.fin.note { min-width: 420px; font-size: 13px; }
+table.fin.note td, table.fin.note th { padding: 6px 10px; }
+table.fin.note td.lbl, table.fin.note th.lbl { min-width: 130px; }
+
 /* ── 텍스트 블록(감사의견·주석 원문) ──────────────────── */
 /* 문단은 lib/format.js 의 toParagraphs 로 다시 흘리므로 pre-wrap 을 쓰지 않는다.
    그래야 원본 종이 폭이 아니라 화면 행 끝에서 개행된다. */

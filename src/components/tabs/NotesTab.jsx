@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Card, Disclose, Empty, Callout, Prose } from '../ui'
+import { Card, Disclose, Empty, Callout, NoteBody } from '../ui'
 
 export default function NotesTab({ report, notes, loading }) {
   const [q, setQ] = useState('')
@@ -62,7 +62,7 @@ export default function NotesTab({ report, notes, loading }) {
         {filtered.length ? (
           filtered.map((n) => (
             <Disclose key={`${n.no}-${n.title}`} summary={`${n.no}. ${n.title}`} count={`${(n.body || '').length.toLocaleString('ko-KR')}자${n.page ? ` · ${n.page}p` : ''}`}>
-              <Prose text={n.body} muted empty="본문 없음" />
+              <NoteBody content={n.content} body={n.body} muted />
             </Disclose>
           ))
         ) : (
