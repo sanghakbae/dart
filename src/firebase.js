@@ -1,7 +1,7 @@
 // Firebase 초기화. 웹 config 는 클라이언트 번들에 그대로 실리는 공개 값이라
 // 기본값으로 내장하고, 필요할 때 VITE_FIREBASE_* 로 덮어쓴다.
+// 로그인(OAuth)은 쓰지 않는다 — 저장 경로 분리는 src/lib/workspace.js 참고.
 import { initializeApp } from 'firebase/app'
-import { getAuth, GoogleAuthProvider } from 'firebase/auth'
 import { getFirestore } from 'firebase/firestore'
 import { getAnalytics, isSupported } from 'firebase/analytics'
 
@@ -20,9 +20,7 @@ export const firebaseConfig = {
 export const isFirebaseConfigured = Boolean(firebaseConfig.apiKey && firebaseConfig.projectId)
 
 const app = isFirebaseConfigured ? initializeApp(firebaseConfig) : null
-export const auth = app ? getAuth(app) : null
 export const db = app ? getFirestore(app) : null
-export const googleProvider = new GoogleAuthProvider()
 
 // Analytics 는 지원되는 브라우저 환경에서만 (로컬 개발·비지원 환경 안전 가드)
 export let analytics = null
@@ -33,9 +31,3 @@ if (app && firebaseConfig.measurementId) {
     })
     .catch(() => {})
 }
-
-// 로그인 허용 이메일 제한 (쉼표 구분). 비우면 모든 Google 계정 허용.
-export const ALLOWED_EMAILS = (env.VITE_ALLOWED_EMAILS || '')
-  .split(',')
-  .map((e) => e.trim().toLowerCase())
-  .filter(Boolean)

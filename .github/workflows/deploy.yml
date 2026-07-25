@@ -30,12 +30,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Firebase 웹 config 는 클라이언트 번들에 실리는 공개 값이라 src/firebase.js 에
+      # 기본값으로 내장되어 있다. 별도 주입이 필요 없다.
       - name: Build
         run: npm run build
-        env:
-          # Firebase 웹 config 는 클라이언트 번들에 실리는 공개 값이라 src/firebase.js 에
-          # 기본값으로 내장되어 있다. 여기서는 로그인 허용 계정만 주입한다.
-          VITE_ALLOWED_EMAILS: ${{ vars.ALLOWED_EMAILS || 'qa@muhayu.com' }}
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

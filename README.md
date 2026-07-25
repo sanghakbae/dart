@@ -4,8 +4,11 @@
 파싱 결과와 추출 원문 전체를 DB에 저장하므로, 분석 로직이 놓친 내용도 원문 탭에서 그대로 확인할 수 있다.
 
 - 프론트엔드: React 18 + Vite
-- 백엔드: Firebase (Firestore) — 미설정 시 브라우저 IndexedDB 로 자동 폴백
+- 백엔드: Firebase (Firestore) — 로그인 없음. 업로드하면 바로 DB에 저장된다
 - 배포: GitHub Pages (`dart.sanghak.kr`)
+
+화면 흐름은 **업로드 → DB 저장 → 회사 리스트 → 회사 선택 → 분석** 이다.
+같은 회사의 보고서는 하나로 묶여, 회사를 선택하면 그 회사의 모든 사업연도가 합쳐진 추이를 볼 수 있다.
 
 ## 지원 입력 형식
 
@@ -60,36 +63,34 @@ npm run dev
 
 ## Firebase
 
-Firebase 프로젝트 **`dart-40a5c`** 에 연결되어 있다. 웹 config 는 클라이언트 번들에 실리는 공개 값이라
+Firebase 프로젝트 **`dart-40a5c`**. 웹 config 는 클라이언트 번들에 실리는 공개 값이라
 `src/firebase.js` 에 기본값으로 내장했고, 다른 프로젝트를 쓸 때만 `.env` 로 덮어쓴다.
 
 ```bash
 cp .env.example .env   # 다른 Firebase 프로젝트를 쓸 때만
 ```
 
-| 변수 | 설명 |
-|---|---|
-| `VITE_FIREBASE_*` | 비우면 `dart-40a5c` 기본값 사용 |
-| `VITE_ALLOWED_EMAILS` | 로그인 허용 이메일 (쉼표 구분). 비우면 모든 Google 계정 허용 |
-
-Google 로그인을 하면 Firestore 에 저장되고, 로그인하지 않으면 브라우저 IndexedDB 에만 저장된다.
-저장 구조:
+**로그인(OAuth)은 쓰지 않는다.** 업로드하면 곧바로 공용 컬렉션에 저장된다:
 
 ```
-users/{uid}/reports/{reportId}              # 메타 · 감사의견 · 계정 값 · 비율 · 품질
-users/{uid}/reports/{reportId}/content/*    # 원문 텍스트 · 표 전체 행 · 주석 본문 · 절 원문 (400KB 청크)
+reports/{reportId}              # 메타 · 감사의견 · 계정 값 · 비율 · 품질
+reports/{reportId}/content/*    # 원문 텍스트 · 표 전체 행 · 주석 본문 · 절 원문 (400KB 청크)
 ```
 
 원문은 Firestore 문서 1MB 한도를 넘길 수 있어 청크로 나눠 저장하고, 열 때 합쳐서 복원한다.
-로컬 사본도 함께 남겨 오프라인에서 바로 열린다.
+로컬 사본도 함께 남겨 오프라인에서 바로 열린다. Firestore 접근이 막히거나 실패하면
+브라우저 IndexedDB 로 폴백하고, 원인을 화면에 그대로 알려준다.
 
-보안 규칙 배포:
+보안 규칙 배포 (**이걸 하지 않으면 DB 저장이 거부된다**):
 
 ```bash
-firebase deploy --only firestore:rules
+firebase deploy --only firestore:rules --project dart-40a5c
 ```
 
-감사보고서는 민감 자료이므로 규칙은 **본인 데이터만 읽고 쓰기**로 잠겨 있다(`firestore.rules`).
+> **공개 데이터임에 주의.** 로그인이 없으므로 규칙은 `reports` 컬렉션을 누구나 읽고 쓸 수 있게 열려 있다.
+> 즉 이 사이트 방문자는 업로드된 모든 감사보고서를 열람할 수 있다. 삭제는 앱에서 제공하지 않고
+> 규칙에서도 막아 두었으므로(`allow delete: if false`), 잘못 올린 자료는 Firebase 콘솔에서 지운다.
+> 비공개로 바꾸려면 Firebase Auth 를 붙이고 소유자 기준으로 규칙을 조여야 한다.
 
 ## 테스트
 
@@ -103,16 +104,12 @@ npm test
 ## 배포
 
 `main` 브랜치 push 시 GitHub Actions 가 빌드해 Pages 로 배포한다(`.github/workflows/deploy.yml`).
-Firebase config 는 코드에 내장되어 있어 별도 주입이 필요 없고, 로그인 허용 계정만 저장소 변수로 받는다:
-
-Settings → Secrets and variables → Actions → Variables → `ALLOWED_EMAILS` (선택, 기본값 `qa@muhayu.com`)
+Firebase config 는 코드에 내장되어 있어 별도로 주입할 값이 없다.
 
 배포 전 한 번 해둘 것:
 
-1. `firebase deploy --only firestore:rules` — 보안 규칙 적용
-2. Firebase 콘솔 → Authentication → Sign-in method → **Google 사용 설정**
-3. Firebase 콘솔 → Authentication → Settings → 승인된 도메인에 **`dart.sanghak.kr`** 추가
-4. GitHub → Settings → Pages → Source `GitHub Actions`, 커스텀 도메인 `dart.sanghak.kr` (`public/CNAME` 에 포함되어 있음)
+1. `firebase deploy --only firestore:rules --project dart-40a5c` — 보안 규칙 적용
+2. GitHub → Settings → Pages → Source `GitHub Actions`, 커스텀 도메인 `dart.sanghak.kr` (`public/CNAME` 에 포함되어 있음)
 
 ## 구조
 
@@ -122,8 +119,9 @@ src/
     extract/     PDF · HTML · 엑셀 → 공통 문서 모델 { rows[{page,cells,text}], fullText }
     parse/       numbers · taxonomy(계정과목 사전) · meta · opinion · statements · notes
     analyze/     ratios(재무비율) · series(연도축 병합) · view(화면용 파생값)
-    storage.js   Firestore(청크) / IndexedDB 저장소
+    storage.js   Firestore(공용 reports 컬렉션, 청크) / IndexedDB 폴백
   components/
+    CompanyList.jsx  업로드된 회사 리스트 (회사 단위로 보고서 묶음)
     charts.jsx   차트 + 표 보기 토글
     tabs/        요약 · 감사의견 · 재무제표 · 추이 · 재무비율 · 주석 · 원문
 ```

@@ -1,6 +1,6 @@
 import { Badge } from './ui'
 
-export default function Header({ storage, user, onLogin, onLogout, theme, onTheme, canLogin }) {
+export default function Header({ storage, theme, onTheme }) {
   return (
     <header className="app-header">
       <div className="wrap bar">
@@ -19,18 +19,6 @@ export default function Header({ storage, user, onLogin, onLogout, theme, onThem
         <button className="btn btn-sm btn-ghost" type="button" onClick={onTheme} aria-label="밝기 전환" title="밝기 전환">
           {theme === 'dark' ? '☀' : '☾'}
         </button>
-
-        {canLogin && (
-          user ? (
-            <button className="btn btn-sm" type="button" onClick={onLogout} title={user.email || ''}>
-              {user.displayName || user.email} · 로그아웃
-            </button>
-          ) : (
-            <button className="btn btn-sm btn-primary" type="button" onClick={onLogin}>
-              Google 로그인
-            </button>
-          )
-        )}
       </div>
     </header>
   )

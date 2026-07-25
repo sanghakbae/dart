@@ -1,14 +1,15 @@
-// 보고서 저장소.
-//   Firestore 설정 + 로그인 → users/{uid}/reports (본문은 content 서브컬렉션에 청크 저장)
-//   그 외                    → 브라우저 IndexedDB
-// 어느 경로든 "업로드한 감사보고서의 모든 내용"이 원문 그대로 남는다.
+// 보고서 저장소. 로그인 없이 Firestore 공용 컬렉션에 저장한다.
+//   reports/{id}              요약(메타·감사의견·계정 값·비율·품질)
+//   reports/{id}/content/*    원문 텍스트 · 표 전체 행 · 주석 본문 · 절 원문 (청크)
+// Firestore 를 쓸 수 없을 때만 브라우저 IndexedDB 로 폴백한다.
 
 import { db, isFirebaseConfigured } from '../firebase.js'
 import {
-  collection, doc, setDoc, getDoc, getDocs, deleteDoc, query, orderBy, writeBatch, limit,
+  collection, doc, setDoc, getDoc, getDocs, query, orderBy, writeBatch, limit,
 } from 'firebase/firestore'
 
 const CHUNK = 400_000 // Firestore 문서 1MB 한도 대비 여유 있게
+const COL = 'reports'
 
 /** 목록·추이 계산에 쓰는 가벼운 요약(본문 제외) */
 function toSummary(report) {
@@ -66,37 +67,33 @@ function reassemble(chunks) {
   }
 }
 
-// ── 백엔드 선택 ────────────────────────────────────────────────
-export function backendFor(uid) {
-  return isFirebaseConfigured && db && uid ? 'firestore' : 'local'
+export const usesFirestore = Boolean(isFirebaseConfigured && db)
+
+export function backendLabel() {
+  return usesFirestore
+    ? { mode: 'firestore', label: 'DB 저장', hint: '업로드한 감사보고서 전체 내용이 Firestore에 저장되고, 목록은 모두가 함께 봅니다.' }
+    : { mode: 'local', label: '브라우저 저장', hint: 'Firebase 설정이 없어 이 브라우저에만 저장합니다.' }
 }
 
-export function backendLabel(uid) {
-  if (!isFirebaseConfigured) return { mode: 'local', label: '브라우저 저장', hint: 'Firebase 설정(.env)이 없어 이 브라우저에만 저장합니다.' }
-  if (!uid) return { mode: 'local', label: '브라우저 저장', hint: '로그인하면 Firestore에 저장되어 다른 기기에서도 보입니다.' }
-  return { mode: 'firestore', label: 'Firestore 저장', hint: '업로드한 보고서 전체 내용이 DB에 저장됩니다.' }
-}
-
-/** Firestore 가 거부·불통일 때 사용자에게 그대로 보여줄 안내 문구 */
+/** Firestore 실패 원인을 사용자에게 그대로 보여줄 문구로 바꾼다. */
 function firestoreHint(e) {
   const code = e?.code || ''
   if (code === 'permission-denied') {
     return 'Firestore 보안 규칙이 접근을 막고 있습니다. `firebase deploy --only firestore:rules` 로 규칙을 배포해 주세요. 지금은 브라우저에만 저장했습니다.'
   }
-  if (code === 'unauthenticated') return 'Firestore 인증이 만료되었습니다. 다시 로그인해 주세요. 지금은 브라우저에만 저장했습니다.'
   if (code === 'unavailable') return 'Firestore 에 연결할 수 없어 브라우저에만 저장했습니다.'
   return `Firestore 저장 실패 (${code || e?.message || '원인 불명'}) — 브라우저에만 저장했습니다.`
 }
 
 // ── 공개 API ──────────────────────────────────────────────────
 /** @returns {{report:object, storage:'firestore'|'local', warning:string|null}} */
-export async function saveReport(report, uid) {
-  if (backendFor(uid) === 'firestore') {
+export async function saveReport(report) {
+  if (usesFirestore) {
     try {
-      const saved = await saveToFirestore(report, uid)
+      const saved = await saveToFirestore(report)
       return { report: saved, storage: 'firestore', warning: null }
     } catch (e) {
-      // 클라우드 저장이 막혀도 분석 결과를 잃지 않도록 로컬에 남긴다.
+      // DB 저장이 막혀도 분석 결과를 잃지 않도록 로컬에 남긴다.
       const local = await saveToLocal(report)
       return { report: local, storage: 'local', warning: firestoreHint(e) }
     }
@@ -106,12 +103,12 @@ export async function saveReport(report, uid) {
 }
 
 /** @returns {{reports:object[], warning:string|null}} */
-export async function listReports(uid) {
+export async function listReports() {
   let cloud = []
   let warning = null
-  if (backendFor(uid) === 'firestore') {
+  if (usesFirestore) {
     try {
-      cloud = await listFromFirestore(uid)
+      cloud = await listFromFirestore()
     } catch (e) {
       warning = firestoreHint(e)
     }
@@ -122,10 +119,10 @@ export async function listReports(uid) {
   return { reports, warning }
 }
 
-export async function loadContent(id, uid, where) {
-  if (where === 'firestore' || (where == null && backendFor(uid) === 'firestore')) {
+export async function loadContent(id) {
+  if (usesFirestore) {
     try {
-      const fromCloud = await loadContentFromFirestore(id, uid)
+      const fromCloud = await loadContentFromFirestore(id)
       if (fromCloud) return fromCloud
     } catch {
       // 규칙·네트워크 문제면 로컬 사본으로 대체한다.
@@ -134,27 +131,16 @@ export async function loadContent(id, uid, where) {
   return loadContentFromLocal(id)
 }
 
-export async function deleteReport(id, uid) {
-  await deleteFromLocal(id)
-  if (backendFor(uid) === 'firestore') {
-    try {
-      await deleteFromFirestore(id, uid)
-    } catch (e) {
-      if (e?.code !== 'permission-denied' && e?.code !== 'not-found') throw e
-    }
-  }
-}
-
 // ── Firestore ────────────────────────────────────────────────
-const repCol = (uid) => collection(db, 'users', uid, 'reports')
+const repCol = () => collection(db, COL)
+const contentCol = (id) => collection(db, COL, id, 'content')
 
-async function saveToFirestore(report, uid) {
-  const summary = toSummary(report)
-  await setDoc(doc(repCol(uid), report.id), { ...summary, storedAt: Date.now(), storage: 'firestore' })
+async function saveToFirestore(report) {
+  await setDoc(doc(repCol(), report.id), { ...toSummary(report), storedAt: Date.now(), storage: 'firestore' })
 
   const chunks = chunkify(contentParts(report))
-  // 이전 본문이 남아 있으면 지우고 새로 쓴다.
-  const prev = await getDocs(collection(repCol(uid), report.id, 'content'))
+  // 같은 id 로 다시 저장하는 경우 이전 본문을 지우고 새로 쓴다.
+  const prev = await getDocs(contentCol(report.id))
   let batch = writeBatch(db)
   let ops = 0
   const flush = async () => {
@@ -167,7 +153,7 @@ async function saveToFirestore(report, uid) {
     if (++ops >= 400) await flush()
   }
   for (const c of chunks) {
-    batch.set(doc(collection(repCol(uid), report.id, 'content'), c.id), c)
+    batch.set(doc(contentCol(report.id), c.id), c)
     if (++ops >= 400) await flush()
   }
   await flush()
@@ -177,28 +163,20 @@ async function saveToFirestore(report, uid) {
   return { ...report, storage: 'firestore' }
 }
 
-async function listFromFirestore(uid) {
-  const snap = await getDocs(query(repCol(uid), orderBy('createdAt', 'desc'), limit(500)))
+async function listFromFirestore() {
+  const snap = await getDocs(query(repCol(), orderBy('createdAt', 'desc'), limit(500)))
   return snap.docs.map((d) => ({ ...d.data(), id: d.id, storage: 'firestore' }))
 }
 
-async function loadContentFromFirestore(id, uid) {
-  const head = await getDoc(doc(repCol(uid), id))
+async function loadContentFromFirestore(id) {
+  const head = await getDoc(doc(repCol(), id))
   if (!head.exists()) return null
-  const snap = await getDocs(collection(repCol(uid), id, 'content'))
+  const snap = await getDocs(contentCol(id))
   if (snap.empty) return null
   return reassemble(snap.docs.map((d) => d.data()))
 }
 
-async function deleteFromFirestore(id, uid) {
-  const snap = await getDocs(collection(repCol(uid), id, 'content'))
-  const batch = writeBatch(db)
-  snap.docs.forEach((d) => batch.delete(d.ref))
-  batch.delete(doc(repCol(uid), id))
-  await batch.commit()
-}
-
-// ── IndexedDB (로컬 폴백) ─────────────────────────────────────
+// ── IndexedDB (폴백) ─────────────────────────────────────────
 const DB_NAME = 'dart-audit-analyzer'
 const DB_VERSION = 1
 let dbp = null
@@ -269,9 +247,4 @@ async function loadContentFromLocal(id) {
   } catch {
     return null
   }
-}
-
-async function deleteFromLocal(id) {
-  await tx('summaries', 'readwrite', (s) => s.delete(id)).catch(() => {})
-  await tx('contents', 'readwrite', (s) => s.delete(id)).catch(() => {})
 }

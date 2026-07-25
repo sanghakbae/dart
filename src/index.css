@@ -297,6 +297,38 @@ main { padding-bottom: 64px; }
 .rep .t { font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rep .m { font-size: 11.5px; color: var(--text-3); display: flex; gap: 6px; flex-wrap: wrap; }
 
+/* ── 회사 리스트 ──────────────────────────────────────── */
+.colist { list-style: none; margin: 0; padding: 0; }
+.colist > li { border-bottom: 1px solid var(--border); }
+.colist > li:last-child { border-bottom: none; }
+.corow {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 13px clamp(12px, 2vw, 20px);
+  border: none;
+  background: none;
+  color: var(--text-1);
+  text-align: left;
+}
+.corow:hover { background: var(--surface-2); }
+.corow.active { background: color-mix(in srgb, var(--series-1) 8%, var(--surface-1)); box-shadow: inset 3px 0 0 var(--series-1); }
+.co-main { display: grid; gap: 3px; min-width: 0; flex: 1 1 220px; }
+.co-name { font-size: 15px; font-weight: 650; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.co-meta {
+  display: flex; gap: 6px; flex-wrap: wrap;
+  font-size: 12.5px; color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+.co-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+.co-go { color: var(--text-3); font-size: 18px; flex: none; }
+
+@media (max-width: 560px) {
+  .co-go { display: none; }
+}
+
 /* ── 탭 ───────────────────────────────────────────────── */
 .tabs {
   display: flex; gap: 4px;

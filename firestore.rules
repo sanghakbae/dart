@@ -1,10 +1,24 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // 감사보고서는 민감 자료라 본인 데이터만 읽고 쓸 수 있게 잠근다.
-    // 문서 본문은 users/{uid}/reports/{id}/content/* 청크로 저장된다.
-    match /users/{uid}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
+
+    // 로그인을 두지 않는 구성이라 reports 컬렉션은 누구나 읽고 쓸 수 있다.
+    // 즉 이 사이트 방문자는 업로드된 모든 감사보고서를 열람·삭제할 수 있다.
+    // 비공개로 바꾸려면 Firebase Auth 를 붙이고 소유자 기준으로 조건을 걸어야 한다.
+    match /reports/{reportId} {
+      allow read: if true;
+      // 삭제 기능은 앱에서 제공하지 않는다. 잘못 올린 자료는 콘솔에서 지운다.
+      allow delete: if false;
+      // 형식이 맞는 문서만 받아 잡다한 쓰기를 걸러낸다(보안 경계는 아니다).
+      allow create, update: if request.resource.data.keys().hasAll(['meta', 'createdAt'])
+        && request.resource.data.meta is map;
+
+      // 원문·표·주석 본문 청크
+      match /content/{chunkId} {
+        allow read: if true;
+        allow create, update: if true;
+        allow delete: if false;
+      }
     }
   }
 }
