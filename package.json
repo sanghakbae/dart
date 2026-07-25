@@ -1,0 +1,26 @@
+{
+  "name": "dart-audit-analyzer",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "감사보고서 업로드 분석 · 전년도 대비 추이 시각화",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node --test tests/parse.test.mjs",
+    "deploy": "npm run build && firebase deploy"
+  },
+  "dependencies": {
+    "firebase": "^11.1.0",
+    "pdfjs-dist": "^4.9.155",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "recharts": "^2.15.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^6.0.7"
+  }
+}
