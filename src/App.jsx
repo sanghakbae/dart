@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { analyzeFile } from './lib/parse'
-import { saveReport, listReports, loadContent, backendLabel } from './lib/storage'
+import { saveReport, listCompanies, loadCompanyReports, loadContent, backendLabel } from './lib/storage'
 import { buildTimeline, splitByPeriodType } from './lib/analyze/series'
 import Header from './components/Header'
 import UploadZone from './components/UploadZone'
-import CompanyList, { groupByCompany } from './components/CompanyList'
+import CompanyList from './components/CompanyList'
 import { Card, Badge, Empty, Callout } from './components/ui'
 import SummaryTab from './components/tabs/SummaryTab'
 import OpinionTab from './components/tabs/OpinionTab'
@@ -26,18 +26,20 @@ const TABS = [
 ]
 
 export default function App() {
-  const [reports, setReports] = useState([])
+  const [companies, setCompanies] = useState([])
   const [loadingList, setLoadingList] = useState(true)
   const [companyKey, setCompanyKey] = useState(null)
+  const [reports, setReports] = useState([]) // 선택한 회사의 보고서들
+  const [loadingReports, setLoadingReports] = useState(false)
   const [activeId, setActiveId] = useState(null)
   const [tab, setTab] = useState('summary')
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState(0)
   const [phase, setPhase] = useState('')
   const [toasts, setToasts] = useState([])
-  const [content, setContent] = useState({}) // id → {rawText, blocks, notes, sections}
+  const [content, setContent] = useState({}) // `${companyKey}/${reportId}` → 본문
   const [contentLoading, setContentLoading] = useState(false)
-  const [periodType, setPeriodType] = useState(null) // 연간·반기·분기 중 추이에 쓸 기간 종류
+  const [periodType, setPeriodType] = useState(null)
   const [theme, setTheme] = useState(() => localStorage.getItem('dart-theme') || 'auto')
   const contentReq = useRef(0)
 
@@ -49,46 +51,65 @@ export default function App() {
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), tone === 'bad' ? 9000 : 5000)
   }, [])
 
-  // 테마
   useEffect(() => {
     if (theme === 'auto') document.documentElement.removeAttribute('data-theme')
     else document.documentElement.setAttribute('data-theme', theme)
     localStorage.setItem('dart-theme', theme)
   }, [theme])
 
-  // DB 목록 로드
-  const refresh = useCallback(async () => {
+  // 회사 목록 (누적 문서 기준)
+  const refreshCompanies = useCallback(async () => {
     try {
-      const { reports: list, warning } = await listReports()
-      setReports(list)
+      const { companies: list, warning } = await listCompanies()
+      setCompanies(list)
       if (warning) toast(warning, 'warn')
     } catch (e) {
-      toast(`목록을 불러오지 못했습니다: ${e.message}`, 'bad')
+      toast(`회사 목록을 불러오지 못했습니다: ${e.message}`, 'bad')
     } finally {
       setLoadingList(false)
     }
   }, [toast])
 
   useEffect(() => {
-    refresh()
-  }, [refresh])
+    refreshCompanies()
+  }, [refreshCompanies])
 
-  const companies = useMemo(() => groupByCompany(reports), [reports])
   const company = useMemo(() => companies.find((c) => c.key === companyKey) || null, [companies, companyKey])
-  const active = useMemo(() => {
-    if (!company) return null
-    return company.reports.find((r) => r.id === activeId) || company.latest
-  }, [company, activeId])
+
+  // 회사를 선택하면 그 회사의 보고서들을 불러온다.
+  useEffect(() => {
+    if (!companyKey) {
+      setReports([])
+      return
+    }
+    let alive = true
+    setLoadingReports(true)
+    loadCompanyReports(companyKey)
+      .then(({ reports: list, warning }) => {
+        if (!alive) return
+        setReports(list)
+        setActiveId((cur) => (list.some((r) => r.id === cur) ? cur : list[0]?.id || null))
+        if (warning) toast(warning, 'warn')
+      })
+      .catch((e) => alive && toast(`보고서를 불러오지 못했습니다: ${e.message}`, 'bad'))
+      .finally(() => alive && setLoadingReports(false))
+    return () => {
+      alive = false
+    }
+  }, [companyKey, toast])
+
+  const active = useMemo(() => reports.find((r) => r.id === activeId) || reports[0] || null, [reports, activeId])
+  const contentKey = active ? `${companyKey}/${active.id}` : null
 
   // 본문(원문·표·주석) 지연 로드
   useEffect(() => {
-    if (!active || content[active.id]) return
+    if (!active || !contentKey || content[contentKey]) return
     const seq = ++contentReq.current
     setContentLoading(true)
-    loadContent(active.id)
+    loadContent(companyKey, active.id)
       .then((c) => {
         if (seq !== contentReq.current) return
-        setContent((prev) => ({ ...prev, [active.id]: c || { rawText: '', blocks: [], notes: { items: [] }, sections: [] } }))
+        setContent((prev) => ({ ...prev, [contentKey]: c || { rawText: '', blocks: [], notes: { items: [] }, sections: [] } }))
       })
       .catch(() => {
         if (seq === contentReq.current) toast('저장된 본문을 불러오지 못했습니다.', 'bad')
@@ -96,11 +117,12 @@ export default function App() {
       .finally(() => {
         if (seq === contentReq.current) setContentLoading(false)
       })
-  }, [active, content, toast])
+  }, [active, contentKey, companyKey, content, toast])
 
   const handleFiles = useCallback(
     async (files) => {
       setBusy(true)
+      let lastCompany = null
       for (let i = 0; i < files.length; i++) {
         const file = files[i]
         const base = i / files.length
@@ -111,16 +133,23 @@ export default function App() {
             setProgress(base + span * p)
             if (msg) setPhase(`${file.name} — ${msg}`)
           })
-          setPhase(`${file.name} DB에 저장 중`)
-          const { report: saved, storage: where, warning } = await saveReport(report)
+          setPhase(`${file.name} DB에 누적 중`)
+          const { report: saved, companyKey: ck, storage: where, warning } = await saveReport(report)
+
           setContent((prev) => ({
             ...prev,
-            [report.id]: { rawText: report.rawText, blocks: report.blocks, notes: report.notes, sections: report.sections },
+            [`${ck}/${saved.id}`]: { rawText: report.rawText, blocks: report.blocks, notes: report.notes, sections: report.sections },
           }))
-          setReports((prev) => [summaryOf(saved), ...prev.filter((r) => r.id !== saved.id)])
+          lastCompany = ck
+
+          // 열려 있는 회사라면 보고서 목록도 즉시 갱신한다.
+          setReports((prev) => (ck === companyKey ? [summaryOf(saved), ...prev.filter((r) => r.id !== saved.id)] : prev))
+
+          const year = report.meta.fiscalYear ? `${report.meta.fiscalYear}년` : '연도 미확인'
+          const period = report.meta.periodType && report.meta.periodType !== 'FY' ? ` ${report.meta.periodLabel}` : ''
           const warn = report.quality?.warnings?.length
           toast(
-            `${report.meta.company} ${report.meta.fiscalYear || ''} ${where === 'firestore' ? 'DB에 저장했습니다' : '브라우저에 저장했습니다'}${warn ? ` (확인 필요 ${warn}건)` : ''}`,
+            `${report.meta.company} ${year}${period} ${where === 'firestore' ? 'DB에 누적했습니다' : '브라우저에 저장했습니다'}${warn ? ` (확인 필요 ${warn}건)` : ''}`,
             warn ? 'warn' : undefined
           )
           if (warning) toast(warning, 'warn')
@@ -131,8 +160,10 @@ export default function App() {
       setProgress(1)
       setBusy(false)
       setPhase('')
+      await refreshCompanies()
+      if (lastCompany && !companyKey) setCompanyKey(null) // 목록에 머문다
     },
-    [toast]
+    [companyKey, refreshCompanies, toast]
   )
 
   // 실재하지 않는 가상 회사로 만든 기능 확인용 예시 파일
@@ -149,7 +180,7 @@ export default function App() {
 
   const selectCompany = useCallback((c) => {
     setCompanyKey(c.key)
-    setActiveId(c.latest?.id || null)
+    setActiveId(null)
     setPeriodType(null)
     setTab('summary')
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -160,9 +191,8 @@ export default function App() {
     setActiveId(null)
   }, [])
 
-  // 추이는 선택한 회사의 보고서를 합쳐 만든다.
-  // 단 연간·반기·분기는 누적 기간이 달라 섞지 않고, 같은 종류끼리만 하나의 축에 올린다.
-  const periodGroups = useMemo(() => splitByPeriodType(company ? company.reports : []), [company])
+  // 추이는 같은 보고기간 종류끼리만 하나의 축에 올린다.
+  const periodGroups = useMemo(() => splitByPeriodType(reports), [reports])
   const activeGroup = useMemo(
     () => periodGroups.find((g) => g.type === periodType) || periodGroups[0] || null,
     [periodGroups, periodType]
@@ -172,7 +202,7 @@ export default function App() {
     [activeGroup]
   )
 
-  const activeContent = active ? content[active.id] : null
+  const activeContent = contentKey ? content[contentKey] : null
   const mergedActive = useMemo(() => {
     if (!active) return null
     return { ...active, ...(activeContent ? { notes: activeContent.notes, sections: activeContent.sections } : null) }
@@ -204,19 +234,19 @@ export default function App() {
       />
 
       <main className="wrap stack-lg" style={{ paddingTop: 20 }}>
-        {!company ? (
+        {!companyKey ? (
           <>
             <UploadZone
               onFiles={handleFiles}
-              onSample={reports.length ? undefined : loadSample}
+              onSample={companies.length ? undefined : loadSample}
               busy={busy}
               progress={progress}
               phase={phase}
-              compact={reports.length > 0}
+              compact={companies.length > 0}
             />
 
             {loadingList ? (
-              <Card><Empty title="DB에서 목록을 불러오는 중입니다…" /></Card>
+              <Card><Empty title="DB에서 회사 목록을 불러오는 중입니다…" /></Card>
             ) : (
               <CompanyList companies={companies} activeKey={companyKey} onSelect={selectCompany} />
             )}
@@ -227,71 +257,83 @@ export default function App() {
               <button className="btn btn-sm btn-ghost" type="button" onClick={closeCompany}>
                 ‹ 회사 목록
               </button>
-              <strong style={{ fontSize: 17 }}>{company.name}</strong>
+              <strong style={{ fontSize: 17 }}>{company?.name || companyKey}</strong>
               {active?.opinion && <Badge tone={active.opinion.tone} dot>{active.opinion.label}</Badge>}
-              <span style={{ color: 'var(--text-3)', fontSize: 13 }}>
-                {active?.meta?.basis} · {active?.meta?.fileName} ({fileSize(active?.meta?.fileSize)})
-              </span>
-            </div>
-
-            {company.reports.length > 1 && (
-              <div className="rep-scroll" role="group" aria-label="사업연도 선택">
-                {company.reports.map((r) => (
-                  <button
-                    key={r.id}
-                    type="button"
-                    className={`rep${r.id === active?.id ? ' active' : ''}`}
-                    onClick={() => {
-                      setActiveId(r.id)
-                      setTab('summary')
-                    }}
-                  >
-                    <span className="t">
-                      {r.meta?.fiscalYear ? `${r.meta.fiscalYear}년` : '연도 미확인'}
-                      {r.meta?.periodType && r.meta.periodType !== 'FY' ? ` ${r.meta.periodLabel}` : ''}
-                    </span>
-                    <span className="m">
-                      <span>{r.meta?.basis}</span>
-                      <span>·</span>
-                      <span>{r.meta?.docKind || '감사보고서'}</span>
-                      <span>·</span>
-                      <span>{r.opinion?.label || '의견 미확인'}</span>
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
-
-            <nav className="tabs" aria-label="분석 탭">
-              {TABS.map((t) => (
-                <button key={t.key} type="button" className={`tab${tab === t.key ? ' active' : ''}`} onClick={() => setTab(t.key)}>
-                  {t.label}
-                  {counts[t.key] != null && <span className="n">{counts[t.key]}</span>}
-                </button>
-              ))}
-            </nav>
-
-            <div style={{ paddingTop: 4 }}>
-              {tab === 'summary' && <SummaryTab report={mergedActive} timeline={timeline} />}
-              {tab === 'opinion' && <OpinionTab report={mergedActive} sections={activeContent?.sections} loading={contentLoading} />}
-              {tab === 'statements' && <StatementsTab report={mergedActive} blocks={activeContent?.blocks} loading={contentLoading} />}
-              {tab === 'trend' && (
-                <TrendTab
-                  timeline={timeline}
-                  reports={activeGroup?.reports || []}
-                  periodGroups={periodGroups}
-                  periodType={activeGroup?.type}
-                  onPeriodType={setPeriodType}
-                />
+              {active && (
+                <span style={{ color: 'var(--text-3)', fontSize: 13 }}>
+                  {active.meta?.basis} · {active.meta?.docKind} · {active.meta?.fileName} ({fileSize(active.meta?.fileSize)})
+                </span>
               )}
-              {tab === 'ratio' && <RatioTab report={mergedActive} timeline={timeline} />}
-              {tab === 'notes' && <NotesTab report={mergedActive} notes={activeContent?.notes} loading={contentLoading} />}
-              {tab === 'raw' && <RawTab report={mergedActive} rawText={activeContent?.rawText} loading={contentLoading} onDownload={downloadRaw} />}
             </div>
 
-            <Callout>
-              같은 회사의 다른 사업연도 감사보고서를 업로드하면 추이 그래프의 연도축이 자동으로 늘어납니다.
-            </Callout>
+            {loadingReports && !reports.length ? (
+              <Card><Empty title="보고서를 불러오는 중입니다…" /></Card>
+            ) : !active ? (
+              <Card><Empty title="이 회사의 보고서를 찾지 못했습니다">보고서를 다시 업로드해 주세요.</Empty></Card>
+            ) : (
+              <>
+                {reports.length > 1 && (
+                  <div className="rep-scroll" role="group" aria-label="보고기간 선택">
+                    {reports.map((r) => (
+                      <button
+                        key={r.id}
+                        type="button"
+                        className={`rep${r.id === active.id ? ' active' : ''}`}
+                        onClick={() => {
+                          setActiveId(r.id)
+                          setTab('summary')
+                        }}
+                      >
+                        <span className="t">
+                          {r.meta?.fiscalYear ? `${r.meta.fiscalYear}년` : '연도 미확인'}
+                          {r.meta?.periodType && r.meta.periodType !== 'FY' ? ` ${r.meta.periodLabel}` : ''}
+                        </span>
+                        <span className="m">
+                          <span>{r.meta?.basis}</span>
+                          <span>·</span>
+                          <span>{r.meta?.docKind || '감사보고서'}</span>
+                          <span>·</span>
+                          <span>{r.opinion?.label || '의견 미확인'}</span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                <nav className="tabs" aria-label="분석 탭">
+                  {TABS.map((t) => (
+                    <button key={t.key} type="button" className={`tab${tab === t.key ? ' active' : ''}`} onClick={() => setTab(t.key)}>
+                      {t.label}
+                      {counts[t.key] != null && <span className="n">{counts[t.key]}</span>}
+                    </button>
+                  ))}
+                </nav>
+
+                <div style={{ paddingTop: 4 }}>
+                  {tab === 'summary' && <SummaryTab report={mergedActive} timeline={timeline} />}
+                  {tab === 'opinion' && <OpinionTab report={mergedActive} sections={activeContent?.sections} loading={contentLoading} />}
+                  {tab === 'statements' && <StatementsTab report={mergedActive} blocks={activeContent?.blocks} loading={contentLoading} />}
+                  {tab === 'trend' && (
+                    <TrendTab
+                      timeline={timeline}
+                      reports={activeGroup?.reports || []}
+                      periodGroups={periodGroups}
+                      periodType={activeGroup?.type}
+                      onPeriodType={setPeriodType}
+                    />
+                  )}
+                  {tab === 'ratio' && <RatioTab report={mergedActive} timeline={timeline} />}
+                  {tab === 'notes' && <NotesTab report={mergedActive} notes={activeContent?.notes} loading={contentLoading} />}
+                  {tab === 'raw' && <RawTab report={mergedActive} rawText={activeContent?.rawText} loading={contentLoading} onDownload={downloadRaw} />}
+                </div>
+
+                <UploadZone onFiles={handleFiles} busy={busy} progress={progress} phase={phase} compact />
+                <Callout>
+                  이 회사의 다른 사업연도 보고서를 업로드하면 같은 회사 문서에 <strong>연도 기준으로 누적</strong>되고
+                  추이 그래프의 연도축이 늘어납니다.
+                </Callout>
+              </>
+            )}
           </>
         )}
       </main>

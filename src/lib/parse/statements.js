@@ -151,13 +151,15 @@ function resolvePeriods(blocks, meta) {
     if (/\(?당\)?\s*기/.test(h) && current == null) current = y
     else if (/\(?전\)?\s*기/.test(h) && prior == null) prior = y
   }
+  // 표 헤더에서 직접 읽은 연도가 표지 추정값보다 정확하다. 출처를 남겨 상위에서 판단하게 한다.
+  const source = current != null ? 'statement' : 'meta'
   if (current == null) current = meta.fiscalYear
   if (prior == null && current != null) prior = current - 1
 
   const termNo = meta.termNo ?? extractTermNo(hints.join(' '))
   return [
-    { id: 'current', year: current, label: current ? `${current}년` : '당기', termNo, which: '당기' },
-    { id: 'prior', year: prior, label: prior ? `${prior}년` : '전기', termNo: termNo ? termNo - 1 : null, which: '전기' },
+    { id: 'current', year: current, label: current ? `${current}년` : '당기', termNo, which: '당기', source },
+    { id: 'prior', year: prior, label: prior ? `${prior}년` : '전기', termNo: termNo ? termNo - 1 : null, which: '전기', source },
   ]
 }
 

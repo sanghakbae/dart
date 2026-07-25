@@ -1,4 +1,4 @@
-import { Card, Badge, Callout, Disclose, Empty, KV } from '../ui'
+import { Card, Badge, Callout, Disclose, Empty, KV, Prose } from '../ui'
 import { dateText } from '../../lib/format'
 
 const VERDICT_HELP = {
@@ -33,7 +33,7 @@ export default function OpinionTab({ report, sections, loading }) {
           />
         </div>
         {opinion?.text ? (
-          <div className="prose" style={{ marginTop: 14 }}>{opinion.text}</div>
+          <div style={{ marginTop: 14 }}><Prose text={opinion.text} /></div>
         ) : (
           <Empty title="감사의견 원문을 찾지 못했습니다" />
         )}
@@ -41,7 +41,7 @@ export default function OpinionTab({ report, sections, loading }) {
 
       {opinion?.basis && (
         <Card title="감사의견근거">
-          <div className="prose muted">{opinion.basis}</div>
+          <Prose text={opinion.basis} muted />
         </Card>
       )}
 
@@ -50,22 +50,24 @@ export default function OpinionTab({ report, sections, loading }) {
           <Callout tone="bad">
             감사인이 계속기업으로서의 존속능력에 유의적 의문을 제기했습니다. 자금조달 계획과 차입금 만기를 함께 확인해야 합니다.
           </Callout>
-          {goingConcern.text && <div className="prose" style={{ marginTop: 12 }}>{goingConcern.text}</div>}
+          {goingConcern.text && <div style={{ marginTop: 12 }}><Prose text={goingConcern.text} /></div>}
         </Card>
       )}
 
       <Card title="핵심감사사항 (KAM)" sub={kam?.items?.length ? `${kam.items.length}개 항목` : '감사인이 가장 유의적이라고 판단한 사항'} tight={Boolean(kam?.items?.length)}>
         {kam?.preamble && (
-          <div className="prose muted" style={{ padding: kam.items?.length ? '14px clamp(12px, 2vw, 20px) 0' : 0 }}>{kam.preamble}</div>
+          <div style={{ padding: kam.items?.length ? '14px clamp(12px, 2vw, 20px) 0' : 0 }}>
+            <Prose text={kam.preamble} muted />
+          </div>
         )}
         {kam?.items?.length ? (
           kam.items.map((it, i) => (
             <Disclose key={`${it.title}-${i}`} summary={it.title || `핵심감사사항 ${i + 1}`} open={i === 0}>
-              <div className="prose muted">{it.body || '본문 없음'}</div>
+              <Prose text={it.body} muted empty="본문 없음" />
             </Disclose>
           ))
         ) : kam?.text ? (
-          <div className="prose muted">{kam.text}</div>
+          <Prose text={kam.text} muted />
         ) : (
           <Empty title="핵심감사사항이 기재되지 않았습니다">비상장 중소기업 감사보고서에는 기재 의무가 없는 경우가 있습니다.</Empty>
         )}
@@ -73,7 +75,7 @@ export default function OpinionTab({ report, sections, loading }) {
 
       {emphasis && (
         <Card title="강조사항" right={<Badge tone="warn">확인 필요</Badge>}>
-          <div className="prose muted">{emphasis}</div>
+          <Prose text={emphasis} muted />
         </Card>
       )}
 
@@ -86,13 +88,13 @@ export default function OpinionTab({ report, sections, loading }) {
             </Badge>
           }
         >
-          {internalControl.text ? <div className="prose muted">{internalControl.text}</div> : <Empty title="관련 문단을 찾지 못했습니다" />}
+          {internalControl.text ? <Prose text={internalControl.text} muted /> : <Empty title="관련 문단을 찾지 못했습니다" />}
         </Card>
       )}
 
       {other && (
         <Card title="기타사항 · 기타정보">
-          <div className="prose muted">{other}</div>
+          <Prose text={other} muted />
         </Card>
       )}
 
@@ -100,7 +102,7 @@ export default function OpinionTab({ report, sections, loading }) {
         {list.length ? (
           list.map((s, i) => (
             <Disclose key={`${s.key}-${i}`} summary={s.label} count={`${(s.text || '').length.toLocaleString('ko-KR')}자`}>
-              <div className="prose muted">{s.text || '내용 없음'}</div>
+              <Prose text={s.text} muted />
             </Disclose>
           ))
         ) : (

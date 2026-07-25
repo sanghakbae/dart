@@ -4,6 +4,7 @@ import { parseNarrative } from './opinion.js'
 import { parseStatements } from './statements.js'
 import { parseNotes } from './notes.js'
 import { computeRatios, buildInsights } from '../analyze/ratios.js'
+import { companyKeyOf, reportIdOf } from '../company.js'
 
 const KEY_ACCOUNTS = [
   'totalAssets', 'totalLiabilities', 'totalEquity', 'currentAssets', 'currentLiabilities',
@@ -21,6 +22,17 @@ export async function analyzeFile(file, onProgress) {
   onProgress?.(0.82, '재무제표 표 복원 중')
   const statements = parseStatements(doc, meta)
 
+  // 누적 키가 '연도'이므로 연도 판정이 가장 중요하다.
+  // 재무제표 기간 헤더에서 직접 읽은 연도가 표지 추정값보다 정확하다.
+  const resolvedYear = statements.periods?.[0]?.year ?? null
+  if (resolvedYear && statements.periods[0].source === 'statement' && resolvedYear !== meta.fiscalYear) {
+    meta.fiscalYearFromCover = meta.fiscalYear
+    meta.fiscalYear = resolvedYear
+    meta.fiscalYearSource = 'statement'
+  } else {
+    meta.fiscalYearSource = resolvedYear ? statements.periods[0].source : 'unknown'
+  }
+
   onProgress?.(0.9, '주석 분리 중')
   const notes = parseNotes(doc)
 
@@ -29,10 +41,10 @@ export async function analyzeFile(file, onProgress) {
   const insights = buildInsights(statements.values, ratios)
   const quality = scoreQuality(statements, narrative, meta)
 
-  const id = makeId(meta)
-
+  // 회사·연도·기간종류·연결여부로 결정되는 ID — 같은 보고서를 다시 올리면 갱신된다.
   return {
-    id,
+    id: reportIdOf(meta),
+    companyKey: companyKeyOf(meta.company),
     createdAt: Date.now(),
     updatedAt: Date.now(),
     meta,
@@ -110,14 +122,4 @@ function checkBalance(v) {
   if (a == null || l == null || e == null) return null
   const diff = Math.abs(a - (l + e))
   return diff <= Math.max(Math.abs(a) * 0.005, 10)
-}
-
-function makeId(meta) {
-  const slug = String(meta.company || 'report')
-    .replace(/\s+/g, '')
-    .replace(/[^가-힣A-Za-z0-9]/g, '')
-    .slice(0, 20)
-  const y = meta.fiscalYear || 'na'
-  const rand = Math.random().toString(36).slice(2, 7)
-  return `${slug || 'report'}-${y}-${meta.basis === '연결' ? 'c' : 's'}-${rand}`
 }

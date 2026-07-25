@@ -14,7 +14,9 @@ import { parseNotes } from '../src/lib/parse/notes.js'
 import { computeRatios, growth } from '../src/lib/analyze/ratios.js'
 import { buildTimeline, seriesFor, splitByPeriodType } from '../src/lib/analyze/series.js'
 import { detectPeriodType } from '../src/lib/parse/numbers.js'
+import { normalizeCompany, displayCompany, accumulateCompany, companyView, reportIdOf } from '../src/lib/company.js'
 import { waterfallSteps, headlineTiles } from '../src/lib/analyze/view.js'
+import { toParagraphs } from '../src/lib/format.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
 
@@ -253,6 +255,112 @@ test('한정의견 판정', () => {
 재고자산 실사에 입회하지 못하였습니다.
 `)
   assert.equal(parseNarrative(d).opinion.type, 'qualified')
+})
+
+test('연결/별도 표기가 달라도 같은 회사로 묶인다', () => {
+  const pairs = [
+    ['주식회사 무하유', '주식회사 무하유와 그 종속기업'],
+    ['삼성전자주식회사', '삼성전자주식회사와 그 종속기업'],
+    ['(주)가나다', '가나다 주식회사'],
+    ['에이비씨 주식회사', '에이비씨주식회사 및 그 종속회사'],
+  ]
+  for (const [a, b] of pairs) {
+    assert.equal(normalizeCompany(a), normalizeCompany(b), `${a} ↔ ${b}`)
+  }
+  // 다른 회사는 합쳐지지 않아야 한다
+  assert.notEqual(normalizeCompany('가나다'), normalizeCompany('가나다홀딩스'))
+  assert.notEqual(normalizeCompany('무하유'), normalizeCompany('무하유테크'))
+
+  // 화면 표기는 종속기업 수식어를 뗀 이름을 쓴다
+  assert.equal(displayCompany('주식회사 무하유와 그 종속기업'), '주식회사 무하유')
+
+  // 파서도 연결 표제에서 회사명만 뽑아야 한다
+  const d = docFromText('독립된 감사인의 감사보고서\n주식회사 무하유와 그 종속기업 주주 및 이사회 귀중\n감사의견\n연결 재무제표\n')
+  assert.equal(parseMeta(d).company, '주식회사 무하유')
+})
+
+test('회사 문서에 보고기간이 누적된다', () => {
+  const mk = (year, type, values, basis = '별도') => ({
+    createdAt: 1000 + year,
+    meta: { company: '주식회사 무하유', fiscalYear: year, periodType: type, periodLabel: type === 'FY' ? '연간' : '3분기', basis },
+    periods: [{ id: 'current', year }, { id: 'prior', year: year - 1 }],
+    values,
+    opinion: { type: 'unqualified', label: '적정의견', tone: 'good' },
+  })
+
+  // 2024 감사보고서: 당기 2024 + 전기 2023 이 함께 누적된다
+  let co = accumulateCompany(null, mk(2024, 'FY', { revenue: { current: 100, prior: 80 } }))
+  assert.equal(co.key, normalizeCompany('주식회사 무하유'))
+  assert.deepEqual(Object.keys(co.periods).sort(), ['FY-2023-s', 'FY-2024-s'])
+  assert.equal(co.periods['FY-2024-s'].values.revenue, 100)
+  assert.equal(co.periods['FY-2023-s'].values.revenue, 80)
+  assert.equal(co.periods['FY-2023-s'].fromPrior, true)
+  assert.equal(co.reportCount, 1)
+
+  // 2023 감사보고서를 추가로 올리면 2023 이 '당기' 값으로 갱신된다
+  co = accumulateCompany(co, mk(2023, 'FY', { revenue: { current: 81, prior: 60 } }))
+  assert.equal(co.periods['FY-2023-s'].values.revenue, 81, '당기 값이 전기 비교치를 덮어써야 한다')
+  assert.equal(co.periods['FY-2023-s'].fromPrior, false)
+  assert.equal(co.periods['FY-2024-s'].values.revenue, 100, '기존 연도는 유지되어야 한다')
+  assert.deepEqual(Object.keys(co.periods).sort(), ['FY-2022-s', 'FY-2023-s', 'FY-2024-s'])
+  assert.equal(co.reportCount, 2)
+  assert.equal(co.latest.fiscalYear, 2024, '최신은 사업연도가 큰 쪽')
+
+  // 같은 보고서를 다시 올려도 보고서 수가 늘지 않는다 (중복 누적 방지)
+  co = accumulateCompany(co, mk(2024, 'FY', { revenue: { current: 100, prior: 80 } }))
+  assert.equal(co.reportCount, 2)
+
+  // 분기보고서는 연간을 덮지 않고 별도 키로 쌓인다
+  co = accumulateCompany(co, mk(2025, 'Q3', { revenue: { current: 70, prior: 65 } }))
+  assert.ok(co.periods['Q3-2025-s'] && co.periods['Q3-2024-s'])
+  assert.equal(co.periods['FY-2024-s'].values.revenue, 100)
+  assert.equal(co.reportCount, 3)
+
+  // 연결 보고서는 같은 회사 문서에 누적되지만, 별도 수치를 덮지 않는다
+  co = accumulateCompany(co, mk(2024, 'FY', { revenue: { current: 130, prior: 105 } }, '연결'))
+  assert.equal(co.reportCount, 4)
+  assert.equal(co.key, normalizeCompany('무하유'))
+  assert.equal(co.periods['FY-2024-s'].values.revenue, 100, '별도 값이 연결 값에 덮이면 안 된다')
+  assert.equal(co.periods['FY-2024-c'].values.revenue, 130)
+
+  // 추이는 기준을 섞지 않는다 — 연간 데이터가 가장 많이 쌓인 기준(별도 3개년)을 쓴다
+  const view = companyView(co)
+  assert.equal(view.name, '주식회사 무하유')
+  assert.equal(view.primaryType, 'FY')
+  assert.equal(view.trendBasis, '별도')
+  assert.deepEqual(view.trend.map((p) => p.value), [60, 81, 100])
+  assert.deepEqual(view.bases.sort(), ['별도', '연결'])
+
+  // 연결 보고서가 더 많이 쌓이면 연결 기준으로 넘어간다
+  let co2 = accumulateCompany(null, mk(2024, 'FY', { revenue: { current: 130, prior: 105 } }, '연결'))
+  co2 = accumulateCompany(co2, mk(2022, 'FY', { revenue: { current: 90, prior: 70 } }, '연결'))
+  co2 = accumulateCompany(co2, mk(2024, 'FY', { revenue: { current: 100, prior: 80 } }, '별도'))
+  assert.equal(companyView(co2).trendBasis, '연결')
+})
+
+test('PDF 종이 줄바꿈을 문단으로 다시 흘린다', () => {
+  // PDF 추출 결과는 종이 한 줄마다 개행이 들어 있다.
+  const raw = [
+    '주식회사 무하유(이하 "당사")는 시스템 소프트웨어 개발 및 공급을 목적으로 2011년7월',
+    '8일 설립되었습니다. 당사의 본사는 서울특별시 성동구 성수동로 5에 소재하고 있으며,',
+    '당사의 자본금은 2,000,000,000원입니다.',
+    '2.1 재무제표 작성기준',
+    '당사는 2025년 1월 1일 이후에 개시하는 연차보고기간부터 국제회계기준을 채택하여',
+    '재정한 한국채택국제회계기준을 적용하고 있습니다.',
+  ].join('\n')
+
+  const paras = toParagraphs(raw)
+  // 첫 문단은 세 줄이 한 문단으로 합쳐진다
+  assert.ok(paras[0].includes('2011년7월 8일 설립되었습니다'), `문단 이어붙이기 실패: ${paras[0]}`)
+  assert.ok(paras[0].endsWith('2,000,000,000원입니다.'))
+  // 번호가 붙은 소제목은 새 문단으로 끊긴다
+  assert.equal(paras[1], '2.1 재무제표 작성기준')
+  assert.ok(paras[2].includes('국제회계기준을 채택하여 재정한'))
+  assert.equal(paras.length, 3)
+
+  // 빈 줄은 문단 경계로 유지된다
+  assert.equal(toParagraphs('가나다 라마바\n\n사아자 차카타').length, 2)
+  assert.deepEqual(toParagraphs(''), [])
 })
 
 test('보고기간 종류 판정 — 연간 · 반기 · 분기', () => {

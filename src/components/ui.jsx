@@ -1,4 +1,20 @@
-import { abbrev, full, accounting, signedPct } from '../lib/format'
+import { abbrev, full, accounting, signedPct, toParagraphs } from '../lib/format'
+
+/**
+ * 보고서 본문 표시. PDF의 종이 줄바꿈을 그대로 두면 화면 폭을 못 채우므로
+ * 문단 단위로 다시 흘려 브라우저가 행 끝에서 개행하게 한다.
+ */
+export function Prose({ text, muted, empty = '내용 없음' }) {
+  const paras = toParagraphs(text)
+  if (!paras.length) return <div className={`prose${muted ? ' muted' : ''}`}>{empty}</div>
+  return (
+    <div className={`prose${muted ? ' muted' : ''}`}>
+      {paras.map((p, i) => (
+        <p key={i}>{p}</p>
+      ))}
+    </div>
+  )
+}
 
 export function Card({ title, sub, right, children, tight, id }) {
   return (

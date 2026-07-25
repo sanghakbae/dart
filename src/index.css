@@ -441,10 +441,15 @@ table.fin .neg { color: var(--critical); }
 .seg button.on { background: var(--surface-1); color: var(--text-1); box-shadow: var(--shadow); }
 
 /* ── 텍스트 블록(감사의견·주석 원문) ──────────────────── */
+/* 문단은 lib/format.js 의 toParagraphs 로 다시 흘리므로 pre-wrap 을 쓰지 않는다.
+   그래야 원본 종이 폭이 아니라 화면 행 끝에서 개행된다. */
 .prose {
-  font-size: 14px; line-height: 1.75; color: var(--text-1);
-  white-space: pre-wrap; overflow-wrap: anywhere;
+  font-size: 14px; line-height: 1.8; color: var(--text-1);
+  overflow-wrap: break-word; word-break: keep-all;
+  width: 100%; /* 원본 종이 폭이 아니라 화면 행 끝에서 개행되도록 폭을 다 쓴다 */
 }
+.prose p { margin: 0 0 0.85em; }
+.prose p:last-child { margin-bottom: 0; }
 .prose.muted { color: var(--text-2); }
 .raw {
   font-family: var(--mono); font-size: 12px; line-height: 1.7;

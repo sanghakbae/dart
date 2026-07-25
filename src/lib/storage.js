@@ -1,15 +1,20 @@
-// 보고서 저장소. 로그인 없이 Firestore 공용 컬렉션에 저장한다.
-//   reports/{id}              요약(메타·감사의견·계정 값·비율·품질)
-//   reports/{id}/content/*    원문 텍스트 · 표 전체 행 · 주석 본문 · 절 원문 (청크)
-// Firestore 를 쓸 수 없을 때만 브라우저 IndexedDB 로 폴백한다.
+// 보고서 저장소. 로그인 없이 회사 단위로 누적한다.
+//
+//   companies/{companyKey}                                누적 요약 (연도별 값 · 최신 감사의견)
+//   companies/{companyKey}/reports/{reportId}              보고서별 분석 결과
+//   companies/{companyKey}/reports/{reportId}/content/*    원문 · 표 · 주석 청크
+//
+// reportId 는 연도·기간종류·연결여부로 결정되므로 같은 보고서를 다시 올리면
+// 새 문서가 생기지 않고 갱신된다. Firestore 를 쓸 수 없으면 IndexedDB 로 폴백한다.
 
 import { db, isFirebaseConfigured } from '../firebase.js'
 import {
-  collection, doc, setDoc, getDoc, getDocs, query, orderBy, writeBatch, limit,
+  collection, doc, setDoc, getDoc, getDocs, query, orderBy, writeBatch, limit, runTransaction,
 } from 'firebase/firestore'
+import { accumulateCompany, companyView, companyKeyOf, reportIdOf } from './company.js'
 
 const CHUNK = 400_000 // Firestore 문서 1MB 한도 대비 여유 있게
-const COL = 'reports'
+const COL = 'companies'
 
 /** 목록·추이 계산에 쓰는 가벼운 요약(본문 제외) */
 function toSummary(report) {
@@ -71,7 +76,7 @@ export const usesFirestore = Boolean(isFirebaseConfigured && db)
 
 export function backendLabel() {
   return usesFirestore
-    ? { mode: 'firestore', label: 'DB 저장', hint: '업로드한 감사보고서 전체 내용이 Firestore에 저장되고, 목록은 모두가 함께 봅니다.' }
+    ? { mode: 'firestore', label: 'DB 저장', hint: '업로드한 감사보고서 전체 내용이 회사별로 Firestore에 누적됩니다.' }
     : { mode: 'local', label: '브라우저 저장', hint: 'Firebase 설정이 없어 이 브라우저에만 저장합니다.' }
 }
 
@@ -85,62 +90,109 @@ function firestoreHint(e) {
   return `Firestore 저장 실패 (${code || e?.message || '원인 불명'}) — 브라우저에만 저장했습니다.`
 }
 
-// ── 공개 API ──────────────────────────────────────────────────
-/** @returns {{report:object, storage:'firestore'|'local', warning:string|null}} */
-export async function saveReport(report) {
-  if (usesFirestore) {
-    try {
-      const saved = await saveToFirestore(report)
-      return { report: saved, storage: 'firestore', warning: null }
-    } catch (e) {
-      // DB 저장이 막혀도 분석 결과를 잃지 않도록 로컬에 남긴다.
-      const local = await saveToLocal(report)
-      return { report: local, storage: 'local', warning: firestoreHint(e) }
-    }
+function keysOf(report) {
+  return {
+    companyKey: report.companyKey || companyKeyOf(report.meta?.company),
+    reportId: report.id || reportIdOf(report.meta || {}),
   }
-  const local = await saveToLocal(report)
-  return { report: local, storage: 'local', warning: null }
 }
 
-/** @returns {{reports:object[], warning:string|null}} */
-export async function listReports() {
+// ── 공개 API ──────────────────────────────────────────────────
+/** @returns {{report:object, companyKey:string, storage:'firestore'|'local', warning:string|null}} */
+export async function saveReport(report) {
+  const { companyKey, reportId } = keysOf(report)
+  const withKeys = { ...report, companyKey, id: reportId }
+
+  if (usesFirestore) {
+    try {
+      await saveToFirestore(withKeys, companyKey, reportId)
+      await saveToLocal(withKeys, companyKey, reportId).catch(() => {})
+      return { report: { ...withKeys, storage: 'firestore' }, companyKey, storage: 'firestore', warning: null }
+    } catch (e) {
+      await saveToLocal(withKeys, companyKey, reportId)
+      return { report: { ...withKeys, storage: 'local' }, companyKey, storage: 'local', warning: firestoreHint(e) }
+    }
+  }
+  await saveToLocal(withKeys, companyKey, reportId)
+  return { report: { ...withKeys, storage: 'local' }, companyKey, storage: 'local', warning: null }
+}
+
+/** 회사 목록 (누적 문서 기준) @returns {{companies:object[], warning:string|null}} */
+export async function listCompanies() {
   let cloud = []
   let warning = null
   if (usesFirestore) {
     try {
-      cloud = await listFromFirestore()
+      const snap = await getDocs(query(collection(db, COL), orderBy('updatedAt', 'desc'), limit(500)))
+      cloud = snap.docs.map((d) => ({ ...d.data(), key: d.id, storage: 'firestore' }))
     } catch (e) {
       warning = firestoreHint(e)
     }
   }
-  const local = await listFromLocal()
+  const local = await listLocalCompanies()
+  const seen = new Set(cloud.map((c) => c.key))
+  const merged = [...cloud, ...local.filter((c) => !seen.has(c.key))]
+  const companies = merged
+    .map((c) => companyView(c))
+    .sort((a, b) => (b.uploadedAt || 0) - (a.uploadedAt || 0))
+  return { companies, warning }
+}
+
+/** 특정 회사의 보고서 요약 목록 */
+export async function loadCompanyReports(companyKey) {
+  let cloud = []
+  let warning = null
+  if (usesFirestore) {
+    try {
+      const snap = await getDocs(collection(db, COL, companyKey, 'reports'))
+      cloud = snap.docs.map((d) => ({ ...d.data(), id: d.id, companyKey, storage: 'firestore' }))
+    } catch (e) {
+      warning = firestoreHint(e)
+    }
+  }
+  const local = await listLocalReports(companyKey)
   const seen = new Set(cloud.map((r) => r.id))
-  const reports = [...cloud, ...local.filter((r) => !seen.has(r.id))].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+  const reports = [...cloud, ...local.filter((r) => !seen.has(r.id))].sort(
+    (a, b) =>
+      (b.meta?.fiscalYear || 0) - (a.meta?.fiscalYear || 0) ||
+      (PERIOD_RANK[b.meta?.periodType] ?? 0) - (PERIOD_RANK[a.meta?.periodType] ?? 0) ||
+      (b.createdAt || 0) - (a.createdAt || 0)
+  )
   return { reports, warning }
 }
 
-export async function loadContent(id) {
+const PERIOD_RANK = { FY: 4, Q3: 3, H1: 2, Q1: 1 }
+
+export async function loadContent(companyKey, reportId) {
   if (usesFirestore) {
     try {
-      const fromCloud = await loadContentFromFirestore(id)
+      const fromCloud = await loadContentFromFirestore(companyKey, reportId)
       if (fromCloud) return fromCloud
     } catch {
       // 규칙·네트워크 문제면 로컬 사본으로 대체한다.
     }
   }
-  return loadContentFromLocal(id)
+  return loadContentFromLocal(companyKey, reportId)
 }
 
 // ── Firestore ────────────────────────────────────────────────
-const repCol = () => collection(db, COL)
-const contentCol = (id) => collection(db, COL, id, 'content')
+const companyDoc = (ck) => doc(db, COL, ck)
+const reportDoc = (ck, rid) => doc(db, COL, ck, 'reports', rid)
+const contentCol = (ck, rid) => collection(db, COL, ck, 'reports', rid, 'content')
 
-async function saveToFirestore(report) {
-  await setDoc(doc(repCol(), report.id), { ...toSummary(report), storedAt: Date.now(), storage: 'firestore' })
+async function saveToFirestore(report, ck, rid) {
+  // 회사 문서는 읽고-병합-쓰기라 트랜잭션으로 처리한다.
+  // (같은 연도를 '당기'로 보고한 값이 '전기' 비교치를 덮어써야 하므로 merge 만으론 부족하다)
+  await runTransaction(db, async (txn) => {
+    const snap = await txn.get(companyDoc(ck))
+    const next = accumulateCompany(snap.exists() ? snap.data() : null, report)
+    txn.set(companyDoc(ck), { ...next, storage: 'firestore' })
+  })
+
+  await setDoc(reportDoc(ck, rid), { ...toSummary(report), storedAt: Date.now(), storage: 'firestore' })
 
   const chunks = chunkify(contentParts(report))
-  // 같은 id 로 다시 저장하는 경우 이전 본문을 지우고 새로 쓴다.
-  const prev = await getDocs(contentCol(report.id))
+  const prev = await getDocs(contentCol(ck, rid))
   let batch = writeBatch(db)
   let ops = 0
   const flush = async () => {
@@ -153,32 +205,24 @@ async function saveToFirestore(report) {
     if (++ops >= 400) await flush()
   }
   for (const c of chunks) {
-    batch.set(doc(contentCol(report.id), c.id), c)
+    batch.set(doc(contentCol(ck, rid), c.id), c)
     if (++ops >= 400) await flush()
   }
   await flush()
-
-  // 로컬에도 사본을 남겨 오프라인에서 바로 열리게 한다.
-  await saveToLocal(report).catch(() => {})
-  return { ...report, storage: 'firestore' }
 }
 
-async function listFromFirestore() {
-  const snap = await getDocs(query(repCol(), orderBy('createdAt', 'desc'), limit(500)))
-  return snap.docs.map((d) => ({ ...d.data(), id: d.id, storage: 'firestore' }))
-}
-
-async function loadContentFromFirestore(id) {
-  const head = await getDoc(doc(repCol(), id))
+async function loadContentFromFirestore(ck, rid) {
+  const head = await getDoc(reportDoc(ck, rid))
   if (!head.exists()) return null
-  const snap = await getDocs(contentCol(id))
+  const snap = await getDocs(contentCol(ck, rid))
   if (snap.empty) return null
   return reassemble(snap.docs.map((d) => d.data()))
 }
 
 // ── IndexedDB (폴백) ─────────────────────────────────────────
 const DB_NAME = 'dart-audit-analyzer'
-const DB_VERSION = 1
+// v3: 누적 키에 연결/별도를 포함하도록 바뀌어, 옛 키가 섞인 회사 문서를 버린다.
+const DB_VERSION = 3
 let dbp = null
 
 function idb() {
@@ -187,8 +231,14 @@ function idb() {
     const req = indexedDB.open(DB_NAME, DB_VERSION)
     req.onupgradeneeded = () => {
       const d = req.result
-      if (!d.objectStoreNames.contains('summaries')) d.createObjectStore('summaries', { keyPath: 'id' })
-      if (!d.objectStoreNames.contains('contents')) d.createObjectStore('contents', { keyPath: 'id' })
+      // 구버전 스토어는 버리고 다시 만든다(원본 파일을 다시 올리면 복구된다).
+      for (const name of ['summaries', 'contents', 'companies', 'reports']) {
+        if (d.objectStoreNames.contains(name)) d.deleteObjectStore(name)
+      }
+      d.createObjectStore('companies', { keyPath: 'key' })
+      const reports = d.createObjectStore('reports', { keyPath: 'localId' })
+      reports.createIndex('companyKey', 'companyKey', { unique: false })
+      d.createObjectStore('contents', { keyPath: 'localId' })
     }
     req.onsuccess = () => resolve(req.result)
     req.onerror = () => reject(req.error)
@@ -216,32 +266,46 @@ function tx(store, mode, fn) {
   )
 }
 
-async function saveToLocal(report) {
-  await tx('summaries', 'readwrite', (s) => s.put({ ...toSummary(report), storage: 'local', storedAt: Date.now() }))
+const localId = (ck, rid) => `${ck}::${rid}`
+
+async function saveToLocal(report, ck, rid) {
+  const prev = await tx('companies', 'readonly', (s) => s.get(ck)).catch(() => null)
+  const next = accumulateCompany(prev || null, report)
+  await tx('companies', 'readwrite', (s) => s.put({ ...next, storage: 'local' }))
+  await tx('reports', 'readwrite', (s) =>
+    s.put({ ...toSummary(report), localId: localId(ck, rid), id: rid, companyKey: ck, storage: 'local', storedAt: Date.now() })
+  )
   await tx('contents', 'readwrite', (s) =>
     s.put({
-      id: report.id,
+      localId: localId(ck, rid),
       rawText: report.rawText || '',
       blocks: report.blocks || [],
       notes: report.notes || { items: [] },
       sections: report.sections || [],
     })
   )
-  return { ...report, storage: 'local' }
 }
 
-async function listFromLocal() {
+async function listLocalCompanies() {
   try {
-    const all = await tx('summaries', 'readonly', (s) => s.getAll())
-    return all || []
+    return (await tx('companies', 'readonly', (s) => s.getAll())) || []
   } catch {
     return []
   }
 }
 
-async function loadContentFromLocal(id) {
+async function listLocalReports(ck) {
   try {
-    const rec = await tx('contents', 'readonly', (s) => s.get(id))
+    const all = (await tx('reports', 'readonly', (s) => s.getAll())) || []
+    return all.filter((r) => r.companyKey === ck)
+  } catch {
+    return []
+  }
+}
+
+async function loadContentFromLocal(ck, rid) {
+  try {
+    const rec = await tx('contents', 'readonly', (s) => s.get(localId(ck, rid)))
     if (!rec) return null
     return { rawText: rec.rawText, blocks: rec.blocks, notes: rec.notes, sections: rec.sections }
   } catch {
