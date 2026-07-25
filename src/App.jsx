@@ -76,9 +76,10 @@ export default function App() {
   // 저장된 목록 로드
   const refresh = useCallback(async () => {
     try {
-      const list = await listReports(uid)
+      const { reports: list, warning } = await listReports(uid)
       setReports(list)
       setActiveId((cur) => cur || list[0]?.id || null)
+      if (warning) toast(warning, 'warn')
     } catch (e) {
       toast(`목록을 불러오지 못했습니다: ${e.message}`, 'bad')
     }
@@ -124,7 +125,7 @@ export default function App() {
             if (msg) setPhase(`${file.name} — ${msg}`)
           })
           setPhase(`${file.name} 저장 중`)
-          const saved = await saveReport(report, uid)
+          const { report: saved, storage: where, warning } = await saveReport(report, uid)
           setContent((prev) => ({
             ...prev,
             [report.id]: { rawText: report.rawText, blocks: report.blocks, notes: report.notes, sections: report.sections },
@@ -133,9 +134,10 @@ export default function App() {
           lastId = saved.id
           const warn = report.quality?.warnings?.length
           toast(
-            `${report.meta.company} ${report.meta.fiscalYear || ''} 분석 완료 · ${storage.mode === 'firestore' ? 'DB 저장됨' : '브라우저에 저장됨'}${warn ? ` (확인 필요 ${warn}건)` : ''}`,
+            `${report.meta.company} ${report.meta.fiscalYear || ''} 분석 완료 · ${where === 'firestore' ? 'DB(Firestore) 저장됨' : '브라우저에 저장됨'}${warn ? ` (확인 필요 ${warn}건)` : ''}`,
             warn ? 'warn' : undefined
           )
+          if (warning) toast(warning, 'warn')
         } catch (e) {
           toast(`${file.name}: ${e.message}`, 'bad')
         }
@@ -148,7 +150,7 @@ export default function App() {
         setTab('summary')
       }
     },
-    [uid, storage.mode, toast]
+    [uid, toast]
   )
 
   // 실재하지 않는 가상 회사로 만든 기능 확인용 예시 파일

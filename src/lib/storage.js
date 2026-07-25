@@ -77,30 +77,72 @@ export function backendLabel(uid) {
   return { mode: 'firestore', label: 'Firestore 저장', hint: '업로드한 보고서 전체 내용이 DB에 저장됩니다.' }
 }
 
-// ── 공개 API ──────────────────────────────────────────────────
-export async function saveReport(report, uid) {
-  if (backendFor(uid) === 'firestore') return saveToFirestore(report, uid)
-  return saveToLocal(report)
+/** Firestore 가 거부·불통일 때 사용자에게 그대로 보여줄 안내 문구 */
+function firestoreHint(e) {
+  const code = e?.code || ''
+  if (code === 'permission-denied') {
+    return 'Firestore 보안 규칙이 접근을 막고 있습니다. `firebase deploy --only firestore:rules` 로 규칙을 배포해 주세요. 지금은 브라우저에만 저장했습니다.'
+  }
+  if (code === 'unauthenticated') return 'Firestore 인증이 만료되었습니다. 다시 로그인해 주세요. 지금은 브라우저에만 저장했습니다.'
+  if (code === 'unavailable') return 'Firestore 에 연결할 수 없어 브라우저에만 저장했습니다.'
+  return `Firestore 저장 실패 (${code || e?.message || '원인 불명'}) — 브라우저에만 저장했습니다.`
 }
 
+// ── 공개 API ──────────────────────────────────────────────────
+/** @returns {{report:object, storage:'firestore'|'local', warning:string|null}} */
+export async function saveReport(report, uid) {
+  if (backendFor(uid) === 'firestore') {
+    try {
+      const saved = await saveToFirestore(report, uid)
+      return { report: saved, storage: 'firestore', warning: null }
+    } catch (e) {
+      // 클라우드 저장이 막혀도 분석 결과를 잃지 않도록 로컬에 남긴다.
+      const local = await saveToLocal(report)
+      return { report: local, storage: 'local', warning: firestoreHint(e) }
+    }
+  }
+  const local = await saveToLocal(report)
+  return { report: local, storage: 'local', warning: null }
+}
+
+/** @returns {{reports:object[], warning:string|null}} */
 export async function listReports(uid) {
-  const cloud = backendFor(uid) === 'firestore' ? await listFromFirestore(uid) : []
+  let cloud = []
+  let warning = null
+  if (backendFor(uid) === 'firestore') {
+    try {
+      cloud = await listFromFirestore(uid)
+    } catch (e) {
+      warning = firestoreHint(e)
+    }
+  }
   const local = await listFromLocal()
   const seen = new Set(cloud.map((r) => r.id))
-  return [...cloud, ...local.filter((r) => !seen.has(r.id))].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+  const reports = [...cloud, ...local.filter((r) => !seen.has(r.id))].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+  return { reports, warning }
 }
 
 export async function loadContent(id, uid, where) {
   if (where === 'firestore' || (where == null && backendFor(uid) === 'firestore')) {
-    const fromCloud = await loadContentFromFirestore(id, uid)
-    if (fromCloud) return fromCloud
+    try {
+      const fromCloud = await loadContentFromFirestore(id, uid)
+      if (fromCloud) return fromCloud
+    } catch {
+      // 규칙·네트워크 문제면 로컬 사본으로 대체한다.
+    }
   }
   return loadContentFromLocal(id)
 }
 
 export async function deleteReport(id, uid) {
   await deleteFromLocal(id)
-  if (backendFor(uid) === 'firestore') await deleteFromFirestore(id, uid)
+  if (backendFor(uid) === 'firestore') {
+    try {
+      await deleteFromFirestore(id, uid)
+    } catch (e) {
+      if (e?.code !== 'permission-denied' && e?.code !== 'not-found') throw e
+    }
+  }
 }
 
 // ── Firestore ────────────────────────────────────────────────

@@ -58,20 +58,22 @@ npm run dev
 `.env` 없이도 바로 동작한다(브라우저 IndexedDB 저장). 첫 화면의 **‘예시 파일로 먼저 보기’** 버튼으로
 가상 회사 예시 보고서를 즉시 분석해 볼 수 있다.
 
-## Firebase 연결
+## Firebase
 
-`.env.example` 을 `.env` 로 복사해 값을 채운다.
+Firebase 프로젝트 **`dart-40a5c`** 에 연결되어 있다. 웹 config 는 클라이언트 번들에 실리는 공개 값이라
+`src/firebase.js` 에 기본값으로 내장했고, 다른 프로젝트를 쓸 때만 `.env` 로 덮어쓴다.
 
 ```bash
-cp .env.example .env
+cp .env.example .env   # 다른 Firebase 프로젝트를 쓸 때만
 ```
 
 | 변수 | 설명 |
 |---|---|
-| `VITE_FIREBASE_*` | Firebase 콘솔 → 프로젝트 설정 → 내 앱 → SDK 설정 값 |
+| `VITE_FIREBASE_*` | 비우면 `dart-40a5c` 기본값 사용 |
 | `VITE_ALLOWED_EMAILS` | 로그인 허용 이메일 (쉼표 구분). 비우면 모든 Google 계정 허용 |
 
-설정 후 Google 로그인을 하면 Firestore 에 저장된다. 저장 구조:
+Google 로그인을 하면 Firestore 에 저장되고, 로그인하지 않으면 브라우저 IndexedDB 에만 저장된다.
+저장 구조:
 
 ```
 users/{uid}/reports/{reportId}              # 메타 · 감사의견 · 계정 값 · 비율 · 품질
@@ -101,20 +103,16 @@ npm test
 ## 배포
 
 `main` 브랜치 push 시 GitHub Actions 가 빌드해 Pages 로 배포한다(`.github/workflows/deploy.yml`).
-Firebase 웹 config 는 클라이언트 번들에 실리는 공개 값이므로 저장소 **Variables** 로 주입한다:
+Firebase config 는 코드에 내장되어 있어 별도 주입이 필요 없고, 로그인 허용 계정만 저장소 변수로 받는다:
 
-Settings → Secrets and variables → Actions → Variables
+Settings → Secrets and variables → Actions → Variables → `ALLOWED_EMAILS` (선택, 기본값 `qa@muhayu.com`)
 
-- `FIREBASE_API_KEY`
-- `FIREBASE_AUTH_DOMAIN`
-- `FIREBASE_PROJECT_ID`
-- `FIREBASE_STORAGE_BUCKET`
-- `FIREBASE_MESSAGING_SENDER_ID`
-- `FIREBASE_APP_ID`
-- `ALLOWED_EMAILS` (선택, 기본값 `qa@muhayu.com`)
+배포 전 한 번 해둘 것:
 
-커스텀 도메인은 `public/CNAME` 의 `dart.sanghak.kr` 로 설정된다.
-Firebase 콘솔 → Authentication → Settings → 승인된 도메인에 `dart.sanghak.kr` 을 추가해야 로그인이 동작한다.
+1. `firebase deploy --only firestore:rules` — 보안 규칙 적용
+2. Firebase 콘솔 → Authentication → Sign-in method → **Google 사용 설정**
+3. Firebase 콘솔 → Authentication → Settings → 승인된 도메인에 **`dart.sanghak.kr`** 추가
+4. GitHub → Settings → Pages → Source `GitHub Actions`, 커스텀 도메인 `dart.sanghak.kr` (`public/CNAME` 에 포함되어 있음)
 
 ## 구조
 
