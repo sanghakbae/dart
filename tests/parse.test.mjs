@@ -12,7 +12,8 @@ import { parseNarrative } from '../src/lib/parse/opinion.js'
 import { parseStatements } from '../src/lib/parse/statements.js'
 import { parseNotes } from '../src/lib/parse/notes.js'
 import { computeRatios, growth } from '../src/lib/analyze/ratios.js'
-import { buildTimeline, seriesFor } from '../src/lib/analyze/series.js'
+import { buildTimeline, seriesFor, splitByPeriodType } from '../src/lib/analyze/series.js'
+import { detectPeriodType } from '../src/lib/parse/numbers.js'
 import { waterfallSteps, headlineTiles } from '../src/lib/analyze/view.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -252,6 +253,51 @@ test('한정의견 판정', () => {
 재고자산 실사에 입회하지 못하였습니다.
 `)
   assert.equal(parseNarrative(d).opinion.type, 'qualified')
+})
+
+test('보고기간 종류 판정 — 연간 · 반기 · 분기', () => {
+  assert.equal(detectPeriodType('제 15 기 2024년 1월 1일부터 2024년 12월 31일까지').type, 'FY')
+  assert.equal(detectPeriodType('제 15 기 3분기 2024년 1월 1일부터 2024년 9월 30일까지').type, 'Q3')
+  assert.equal(detectPeriodType('제 15 기 반기 2024년 1월 1일부터 2024년 6월 30일까지').type, 'H1')
+  assert.equal(detectPeriodType('제 15 기 1분기 2024년 1월 1일부터 2024년 3월 31일까지').type, 'Q1')
+  assert.equal(detectPeriodType('2024년 12월 31일 현재').type, 'FY')
+  // 종료일 표기가 없으면 표제 키워드로 되짚는다
+  assert.equal(detectPeriodType('분기보고서 제3분기').type, 'Q3')
+  assert.equal(detectPeriodType('반기보고서').type, 'H1')
+  // 감사보고서 픽스처는 연간으로 잡혀야 한다
+  assert.equal(meta.periodType, 'FY')
+  assert.equal(meta.periodLabel, '연간')
+})
+
+test('분기보고서는 연간 추이와 같은 축에 섞이지 않는다', () => {
+  const annual = {
+    id: 'fy',
+    meta: { ...meta, fiscalYear: 2024, periodType: 'FY' },
+    periods: [{ id: 'current', year: 2024 }, { id: 'prior', year: 2023 }],
+    values: { revenue: { current: 128400000000, prior: 104200000000 } },
+  }
+  const q3 = {
+    id: 'q3',
+    meta: { ...meta, fiscalYear: 2025, periodType: 'Q3' },
+    periods: [{ id: 'current', year: 2025 }, { id: 'prior', year: 2024 }],
+    values: { revenue: { current: 99000000000, prior: 92000000000 } },
+  }
+
+  const groups = splitByPeriodType([annual, q3])
+  assert.equal(groups.length, 2)
+  assert.equal(groups[0].type, 'FY') // 연간 우선
+  assert.equal(groups[1].type, 'Q3')
+
+  // 연간 축에는 3분기 누적치가 들어오지 않는다
+  const fyLine = buildTimeline(groups[0].reports)
+  assert.deepEqual(fyLine.years, [2023, 2024])
+  assert.equal(fyLine.byYear.get(2024).values.revenue, 128400000000)
+
+  // 분기 축은 따로, 라벨에 기간 종류가 붙는다
+  const q3Line = buildTimeline(groups[1].reports, { labelSuffix: '3분기' })
+  assert.deepEqual(q3Line.years, [2024, 2025])
+  assert.equal(q3Line.rows[1].label, '2025년 3분기')
+  assert.equal(q3Line.byYear.get(2024).values.revenue, 92000000000)
 })
 
 function round(n, d) {

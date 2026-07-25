@@ -1,6 +1,9 @@
 import { useMemo, useState } from 'react'
 import { Badge, Empty, Card } from './ui'
-import { dateTimeText } from '../lib/format'
+import { MiniTrend } from './charts'
+import { buildTimeline, splitByPeriodType } from '../lib/analyze/series'
+import { dateTimeText, abbrev, signedPct } from '../lib/format'
+import { growth } from '../lib/analyze/ratios'
 
 export function normalizeCompany(name) {
   return String(name || '')
@@ -27,10 +30,27 @@ export function groupByCompany(reports) {
         (a, b) => (b.meta?.fiscalYear || 0) - (a.meta?.fiscalYear || 0) || (b.createdAt || 0) - (a.createdAt || 0)
       )
       const latest = sorted[0]
+      // 회사 단위 추이는 보고기간 종류가 같은 것끼리만 만든다(연간 우선).
+      const groups = splitByPeriodType(sorted)
+      const primary = groups[0]
+      const timeline = buildTimeline(primary ? primary.reports : [])
+      const trend = timeline.rows
+        .map((row) => ({ label: row.label, value: row.revenue ?? null }))
+        .filter((p) => p.value != null)
+      const first = trend[0]
+      const last = trend[trend.length - 1]
+
       return {
         ...g,
         reports: sorted,
         latest,
+        periodGroups: groups,
+        periodLabel: primary?.label || '연간',
+        mixedPeriods: groups.length > 1,
+        trend,
+        trendGrowth: trend.length > 1 ? growth(last.value, first.value) : null,
+        trendLatest: last?.value ?? null,
+        trendSpan: trend.length > 1 ? `${first.label}→${last.label}` : null,
         years: [...new Set(sorted.map((r) => r.meta?.fiscalYear).filter(Boolean))].sort((a, b) => a - b),
         auditor: latest?.meta?.auditor || null,
         opinion: latest?.opinion || null,
@@ -96,6 +116,12 @@ export default function CompanyList({ companies, activeKey, onSelect }) {
                   <span>{c.years.length ? `${c.years.join(' · ')}년` : '연도 미확인'}</span>
                   <span aria-hidden="true">·</span>
                   <span>보고서 {c.reports.length}건</span>
+                  {c.periodLabel !== '연간' && (
+                    <>
+                      <span aria-hidden="true">·</span>
+                      <span>{c.periodLabel}</span>
+                    </>
+                  )}
                   {c.auditor && (
                     <>
                       <span aria-hidden="true">·</span>
@@ -106,6 +132,19 @@ export default function CompanyList({ companies, activeKey, onSelect }) {
                   <span>{dateTimeText(c.uploadedAt)}</span>
                 </span>
               </span>
+              {c.trend.length > 1 ? (
+                <span className="co-trend">
+                  <MiniTrend points={c.trend} label="매출액" />
+                  <span className="co-trend-txt">
+                    <span className="co-trend-v">{abbrev(c.trendLatest)}</span>
+                    <span className={c.trendGrowth >= 0 ? 'up' : 'down'}>{signedPct(c.trendGrowth)}</span>
+                    <span className="co-trend-span">{c.trendSpan} 매출</span>
+                  </span>
+                </span>
+              ) : (
+                <span className="co-trend co-trend-empty">추이 1개 연도</span>
+              )}
+
               <span className="co-tags">
                 {c.opinion && <Badge tone={c.opinion.tone} dot>{c.opinion.label}</Badge>}
                 {c.basis && <Badge tone="muted">{c.basis}</Badge>}

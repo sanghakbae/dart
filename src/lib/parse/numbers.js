@@ -88,6 +88,63 @@ export function extractYears(text) {
   return out
 }
 
+// 보고기간 종료월로 연간·반기·분기를 가른다.
+// 상장회사는 분기·반기보고서(검토보고서)를 함께 공시하므로, 이걸 구분하지 않으면
+// 3분기 누적 실적이 연간 실적과 같은 축에 섞여 비교가 성립하지 않는다.
+const PERIOD_BY_END_MONTH = {
+  3: { type: 'Q1', label: '1분기', order: 1 },
+  6: { type: 'H1', label: '반기', order: 2 },
+  9: { type: 'Q3', label: '3분기', order: 3 },
+  12: { type: 'FY', label: '연간', order: 4 },
+}
+
+export const ANNUAL = { type: 'FY', label: '연간', order: 4 }
+
+/**
+ * 문서에서 당기 보고기간의 종료 시점을 찾아 기간 종류를 판정한다.
+ * "2024년 1월 1일부터 2024년 9월 30일까지" → 3분기
+ * "2024년 12월 31일 현재"                  → 연간
+ */
+export function detectPeriodType(text) {
+  if (!text) return { ...ANNUAL, found: false }
+
+  const ends = []
+  const push = (m) => {
+    const month = Number(m)
+    if (PERIOD_BY_END_MONTH[month]) ends.push(month)
+  }
+
+  // "…부터 2024년 9월 30일까지" 형태를 최우선으로 본다.
+  const re = /부터[^\n]{0,30}?(?:20\d{2})\s*[년.\-/]\s*(\d{1,2})\s*[월.\-/]\s*\d{1,2}\s*일?\s*까지/g
+  let m
+  while ((m = re.exec(text))) push(m[1])
+
+  // 재무상태표는 "…현재" 로만 표기된다.
+  if (!ends.length) {
+    const re2 = /(?:20\d{2})\s*[년.\-/]\s*(\d{1,2})\s*[월.\-/]\s*\d{1,2}\s*일?\s*현재/g
+    while ((m = re2.exec(text))) push(m[1])
+  }
+
+  if (ends.length) {
+    // 같은 문서에 여러 기간이 나오면 가장 많이 등장한 종료월을 당기로 본다.
+    const freq = new Map()
+    for (const e of ends) freq.set(e, (freq.get(e) || 0) + 1)
+    const top = [...freq.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0][0]
+    return { ...PERIOD_BY_END_MONTH[top], endMonth: top, found: true }
+  }
+
+  // 종료일을 못 찾으면 표제 키워드로 되짚는다.
+  if (/반기\s*보고서|반\s*기\s*검토/.test(text)) return { type: 'H1', label: '반기', order: 2, found: true }
+  const q = /제?\s*([1-4])\s*분기/.exec(text)
+  if (q) {
+    const n = Number(q[1])
+    if (n === 1) return { type: 'Q1', label: '1분기', order: 1, found: true }
+    if (n === 2) return { type: 'H1', label: '반기', order: 2, found: true }
+    if (n === 3) return { type: 'Q3', label: '3분기', order: 3, found: true }
+  }
+  return { ...ANNUAL, found: false }
+}
+
 /** "제 25 (당) 기" → 25 */
 export function extractTermNo(text) {
   const m = /제\s*(\d{1,3})\s*(?:\([당전]\)\s*)?기/.exec(text || '')

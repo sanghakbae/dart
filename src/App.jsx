@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { analyzeFile } from './lib/parse'
 import { saveReport, listReports, loadContent, backendLabel } from './lib/storage'
-import { buildTimeline } from './lib/analyze/series'
+import { buildTimeline, splitByPeriodType } from './lib/analyze/series'
 import Header from './components/Header'
 import UploadZone from './components/UploadZone'
 import CompanyList, { groupByCompany } from './components/CompanyList'
@@ -37,6 +37,7 @@ export default function App() {
   const [toasts, setToasts] = useState([])
   const [content, setContent] = useState({}) // id → {rawText, blocks, notes, sections}
   const [contentLoading, setContentLoading] = useState(false)
+  const [periodType, setPeriodType] = useState(null) // 연간·반기·분기 중 추이에 쓸 기간 종류
   const [theme, setTheme] = useState(() => localStorage.getItem('dart-theme') || 'auto')
   const contentReq = useRef(0)
 
@@ -149,6 +150,7 @@ export default function App() {
   const selectCompany = useCallback((c) => {
     setCompanyKey(c.key)
     setActiveId(c.latest?.id || null)
+    setPeriodType(null)
     setTab('summary')
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }, [])
@@ -158,8 +160,17 @@ export default function App() {
     setActiveId(null)
   }, [])
 
-  // 추이는 선택한 회사의 보고서를 모두 합쳐서 만든다.
-  const timeline = useMemo(() => buildTimeline(company ? company.reports : []), [company])
+  // 추이는 선택한 회사의 보고서를 합쳐 만든다.
+  // 단 연간·반기·분기는 누적 기간이 달라 섞지 않고, 같은 종류끼리만 하나의 축에 올린다.
+  const periodGroups = useMemo(() => splitByPeriodType(company ? company.reports : []), [company])
+  const activeGroup = useMemo(
+    () => periodGroups.find((g) => g.type === periodType) || periodGroups[0] || null,
+    [periodGroups, periodType]
+  )
+  const timeline = useMemo(
+    () => buildTimeline(activeGroup ? activeGroup.reports : [], { labelSuffix: activeGroup?.type === 'FY' ? '' : activeGroup?.label }),
+    [activeGroup]
+  )
 
   const activeContent = active ? content[active.id] : null
   const mergedActive = useMemo(() => {
@@ -235,9 +246,14 @@ export default function App() {
                       setTab('summary')
                     }}
                   >
-                    <span className="t">{r.meta?.fiscalYear ? `${r.meta.fiscalYear}년` : '연도 미확인'}</span>
+                    <span className="t">
+                      {r.meta?.fiscalYear ? `${r.meta.fiscalYear}년` : '연도 미확인'}
+                      {r.meta?.periodType && r.meta.periodType !== 'FY' ? ` ${r.meta.periodLabel}` : ''}
+                    </span>
                     <span className="m">
                       <span>{r.meta?.basis}</span>
+                      <span>·</span>
+                      <span>{r.meta?.docKind || '감사보고서'}</span>
                       <span>·</span>
                       <span>{r.opinion?.label || '의견 미확인'}</span>
                     </span>
@@ -259,7 +275,15 @@ export default function App() {
               {tab === 'summary' && <SummaryTab report={mergedActive} timeline={timeline} />}
               {tab === 'opinion' && <OpinionTab report={mergedActive} sections={activeContent?.sections} loading={contentLoading} />}
               {tab === 'statements' && <StatementsTab report={mergedActive} blocks={activeContent?.blocks} loading={contentLoading} />}
-              {tab === 'trend' && <TrendTab timeline={timeline} reports={company.reports} />}
+              {tab === 'trend' && (
+                <TrendTab
+                  timeline={timeline}
+                  reports={activeGroup?.reports || []}
+                  periodGroups={periodGroups}
+                  periodType={activeGroup?.type}
+                  onPeriodType={setPeriodType}
+                />
+              )}
               {tab === 'ratio' && <RatioTab report={mergedActive} timeline={timeline} />}
               {tab === 'notes' && <NotesTab report={mergedActive} notes={activeContent?.notes} loading={contentLoading} />}
               {tab === 'raw' && <RawTab report={mergedActive} rawText={activeContent?.rawText} loading={contentLoading} onDownload={downloadRaw} />}

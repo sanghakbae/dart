@@ -383,6 +383,43 @@ export function RatioSpark({ data, ratio, height = 150 }) {
   )
 }
 
+/**
+ * 회사 리스트 행에 넣는 초소형 추이 그래프.
+ * 축·눈금 없이 형태만 보여주고, 정확한 수치는 옆의 텍스트와 상세 화면의 표가 담당한다.
+ */
+export function MiniTrend({ points, label = '매출액', width = 108, height = 34 }) {
+  const vals = (points || []).filter((p) => p.value != null)
+  if (vals.length < 2) return null
+
+  const min = Math.min(0, ...vals.map((p) => p.value))
+  const max = Math.max(...vals.map((p) => p.value))
+  const span = max - min || 1
+  const step = vals.length > 1 ? width / (vals.length - 1) : width
+  const y = (v) => height - 3 - ((v - min) / span) * (height - 6)
+
+  const line = vals.map((p, i) => `${i === 0 ? 'M' : 'L'}${(i * step).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ')
+  const area = `${line} L${((vals.length - 1) * step).toFixed(1)},${height - 3} L0,${height - 3} Z`
+  const last = vals[vals.length - 1]
+  const rising = last.value >= vals[0].value
+  const color = rising ? 'var(--div-pos)' : 'var(--div-neg)'
+  const summary = vals.map((p) => `${p.label} ${abbrev(p.value)}`).join(', ')
+
+  return (
+    <svg
+      width={width}
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      role="img"
+      aria-label={`${label} 추이 — ${summary}`}
+      style={{ flex: 'none', overflow: 'visible' }}
+    >
+      <path d={area} fill={color} opacity="0.12" />
+      <path d={line} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+      <circle cx={((vals.length - 1) * step).toFixed(1)} cy={y(last.value).toFixed(1)} r="3" fill={color} stroke={SURFACE} strokeWidth="2" />
+    </svg>
+  )
+}
+
 // ── 자산 구성 ─────────────────────────────────────────────────
 export function CompositionDonut({ slices, title, sub, note, height = 250 }) {
   const data = slices.filter((s) => s.value != null && s.value > 0).slice(0, 6)

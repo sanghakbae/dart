@@ -1,6 +1,6 @@
 // 표지·수신문에서 회사명, 사업연도, 감사인, 감사보고서일, 연결/별도 구분을 뽑는다.
 
-import { extractYears, extractTermNo } from './numbers.js'
+import { extractYears, extractTermNo, detectPeriodType } from './numbers.js'
 
 const AUDIT_FIRM_RE =
   /((?:삼일|삼정|한영|안진|대주|우리|신한|한울|정진세림|이촌|다산|성현|서현|현대|au|EY|KPMG|PwC|Deloitte)[^\n]{0,20}?회계법인|[가-힣A-Za-z][^\n]{0,18}?회계법인|[^\n]{0,18}?감사반)/
@@ -8,8 +8,11 @@ const AUDIT_FIRM_RE =
 export function parseMeta(doc) {
   const text = doc.fullText
   const head = text.slice(0, 6000)
+  const period = detectPeriodType(text)
 
   return {
+    periodType: period.type,        // FY · H1 · Q3 · Q1
+    periodLabel: period.label,     // 연간 · 반기 · 3분기 · 1분기
     company: findCompany(head, doc),
     auditor: findAuditor(text),
     reportDate: findReportDate(text),
@@ -26,6 +29,8 @@ export function parseMeta(doc) {
 }
 
 function guessDocKind(text) {
+  if (/분기\s*보고서/.test(text)) return '분기보고서'
+  if (/반기\s*보고서/.test(text)) return '반기보고서'
   if (/독립된\s*감사인의\s*감사보고서/.test(text)) return '감사보고서'
   if (/독립된\s*감사인의\s*검토보고서/.test(text)) return '검토보고서'
   if (/감사보고서/.test(text)) return '감사보고서'

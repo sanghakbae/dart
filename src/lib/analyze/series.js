@@ -4,11 +4,35 @@
 
 import { computeRatios, growth, ALL_RATIOS } from './ratios.js'
 
+const PERIOD_ORDER = { FY: 4, Q3: 3, H1: 2, Q1: 1 }
+const PERIOD_LABEL = { FY: '연간', Q3: '3분기', H1: '반기', Q1: '1분기' }
+
 /**
- * @param {Array} reports 저장된 보고서(요약) 목록
+ * 보고기간 종류별로 보고서를 나눈다.
+ * 연간·반기·분기는 누적 기간이 달라 한 축에 섞으면 비교가 성립하지 않으므로,
+ * 추이는 같은 종류끼리만 만든다. (상장회사는 분기·반기보고서를 함께 공시한다)
+ */
+export function splitByPeriodType(reports) {
+  const map = new Map()
+  for (const r of reports || []) {
+    const type = r.meta?.periodType || 'FY'
+    if (!map.has(type)) map.set(type, { type, label: PERIOD_LABEL[type] || type, order: PERIOD_ORDER[type] ?? 0, reports: [] })
+    map.get(type).reports.push(r)
+  }
+  return [...map.values()].sort((a, b) => b.order - a.order)
+}
+
+/**
+ * @param {Array} reports 저장된 보고서(요약) 목록 — 같은 보고기간 종류끼리 넘긴다
+ * @param {{labelSuffix?: string}} [opts]
  * @returns {{ years:number[], byYear:Map, rows:Array, sources:Array }}
  */
-export function buildTimeline(reports) {
+export function buildTimeline(reports, opts = {}) {
+  const suffix = opts.labelSuffix ? ` ${opts.labelSuffix}` : ''
+  return buildTimelineInner(reports, suffix)
+}
+
+function buildTimelineInner(reports, suffix) {
   const byYear = new Map() // year → { year, values:{key:number}, ratios:{}, sources:[] }
 
   const upsert = (year, key, value, src, isCurrent) => {
@@ -50,7 +74,7 @@ export function buildTimeline(reports) {
 
   const rows = years.map((y) => {
     const slot = byYear.get(y)
-    return { year: y, label: `${y}년`, ...slot.values, __ratios: slot.ratios, __sources: slot.sources }
+    return { year: y, label: `${y}년${suffix}`, ...slot.values, __ratios: slot.ratios, __sources: slot.sources }
   })
 
   return { years, byYear, rows, sources: dedupeSources(reports) }

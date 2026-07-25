@@ -12,9 +12,18 @@ const GROWTH_METRICS = [
   { key: 'totalAssets', label: '자산총계' },
 ]
 
-export default function TrendTab({ timeline, reports }) {
+export default function TrendTab({ timeline, reports, periodGroups = [], periodType, onPeriodType }) {
   const [metric, setMetric] = useState('revenue')
   const [group, setGroup] = useState('profitability')
+
+  // 연결과 별도는 합산 범위가 달라 한 축에 섞으면 비교가 성립하지 않는다.
+  const mixedBasis = useMemo(() => {
+    const bases = [...new Set((reports || []).map((r) => r.meta?.basis).filter(Boolean))]
+    if (bases.length < 2) return null
+    return (reports || [])
+      .map((r) => `${r.meta?.fiscalYear || '연도 미확인'}년 ${r.meta?.basis}`)
+      .join(' · ')
+  }, [reports])
 
   const amountKeys = [
     'revenue', 'operatingProfit', 'netIncome',
@@ -58,15 +67,41 @@ export default function TrendTab({ timeline, reports }) {
 
   return (
     <div className="stack-lg">
-      <Card title="추이 데이터 구성" sub={`${timeline.years.length}개 연도 · 보고서 ${reports.length}건`}>
+      <Card
+        title="추이 데이터 구성"
+        sub={`${timeline.years.length}개 연도 · 보고서 ${reports.length}건`}
+        right={
+          periodGroups.length > 1 ? (
+            <Seg
+              ariaLabel="보고기간 종류"
+              value={periodType}
+              onChange={onPeriodType}
+              options={periodGroups.map((g) => ({ value: g.type, label: `${g.label} (${g.reports.length})` }))}
+            />
+          ) : null
+        }
+      >
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
           {timeline.years.map((y) => (
             <Badge key={y} tone="info">{y}년</Badge>
           ))}
         </div>
+        {periodGroups.length > 1 && (
+          <Callout tone="warn">
+            이 회사에는 보고기간 종류가 다른 보고서가 섞여 있습니다
+            ({periodGroups.map((g) => `${g.label} ${g.reports.length}건`).join(' · ')}).
+            누적 기간이 달라 한 축에 섞으면 비교가 성립하지 않으므로 <strong>{periodGroups.find((g) => g.type === periodType)?.label}</strong> 보고서만으로 추이를 만들었습니다.
+          </Callout>
+        )}
+        {mixedBasis && (
+          <Callout tone="warn">
+            연결과 별도 기준이 섞여 있습니다 ({mixedBasis}). 연결은 종속회사까지 합산한 수치라
+            별도와 같은 축에서 비교하면 증감이 실제보다 크게 보일 수 있습니다.
+          </Callout>
+        )}
         <Callout>
           같은 연도가 여러 보고서에 나오면 그 연도를 <strong>당기</strong>로 보고한 값을 우선 사용합니다(전기 비교치보다 정확).
-          연도를 더 늘리려면 다른 사업연도의 감사보고서를 추가로 업로드하세요.
+          연도를 더 늘리려면 다른 사업연도의 보고서를 추가로 업로드하세요.
         </Callout>
       </Card>
 
