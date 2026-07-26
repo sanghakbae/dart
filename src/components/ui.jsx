@@ -140,7 +140,7 @@ export function FinTable({ columns, rows, note, minWidth }) {
                   const v = r.values?.[c.key]
                   const isNum = typeof v === 'number'
                   return (
-                    <td key={c.key} className={isNum && v < 0 ? 'neg' : ''} title={isNum ? full(v) : undefined}>
+                    <td key={c.key} data-label={c.label} className={isNum && v < 0 ? 'neg' : ''} title={isNum ? full(v) : undefined}>
                       {c.render ? c.render(v, r) : isNum ? accounting(v) : v ?? '-'}
                     </td>
                   )
@@ -202,6 +202,7 @@ export function NoteBody({ content, body, muted }) {
                       return (
                         <td
                           key={ci}
+                          data-label={b.header?.[ci] || ''}
                           className={ci === 0 ? 'lbl' : n != null && n < 0 ? 'neg' : isText ? 'txt' : undefined}
                         >
                           {cell || (ci === 0 ? '' : '-')}
