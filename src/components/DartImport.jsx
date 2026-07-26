@@ -15,6 +15,7 @@ export default function DartImport({ onFiles, busy }) {
   const [searching, setSearching] = useState(false)
   const [picked, setPicked] = useState(null)
   const [filings, setFilings] = useState([])
+  const [truncated, setTruncated] = useState(false)
   const [loadingFilings, setLoadingFilings] = useState(false)
   const [error, setError] = useState(null)
   const [pulling, setPulling] = useState(null)
@@ -41,11 +42,13 @@ export default function DartImport({ onFiles, busy }) {
   const pick = useCallback(async (c) => {
     setPicked(c)
     setFilings([])
+    setTruncated(false)
     setError(null)
     setLoadingFilings(true)
     try {
-      const { list } = await fetchFilings(c.code)
+      const { list, truncated: cut } = await fetchFilings(c.code)
       setFilings(list)
+      setTruncated(Boolean(cut))
       if (!list.length) setError(`${c.name} 의 감사보고서·정기보고서 공시가 없습니다.`)
     } catch (e) {
       setError(e.message)
@@ -137,6 +140,13 @@ export default function DartImport({ onFiles, busy }) {
             </ul>
           ) : (
             !error && <Empty title="공시가 없습니다" />
+          )}
+
+          {truncated && (
+            <Callout tone="warn">
+              공시가 많아 <strong>최근 것부터 일부만</strong> 불러왔습니다. 더 오래된 보고서는 목록에
+              없을 수 있습니다 — 그 연도는 파일로 올려 주세요.
+            </Callout>
           )}
         </>
       )}

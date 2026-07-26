@@ -89,7 +89,13 @@ async function scrub(response, env) {
   // 키를 지운 뒤에도 상류 URL 이 남으면 통째로 줄인다.
   out = out.replace(/https?:\/\/[^\s",]+/g, (m) => new URL(m).origin + new URL(m).pathname)
   if (out === text) return response
-  return new Response(out, { status: response.status, headers: response.headers })
+
+  // 본문 길이가 달라졌으므로 원본 헤더의 content-length·content-encoding 을 물려주면
+  // 응답이 잘리거나 디코딩에 실패한다. 런타임이 다시 계산하도록 지운다.
+  const headers = new Headers(response.headers)
+  headers.delete('content-length')
+  headers.delete('content-encoding')
+  return new Response(out, { status: response.status, headers })
 }
 
 /** 검증에 실패한 Origin 은 지워서 핸들러가 '*' 로 응답하지 않게 한다 */

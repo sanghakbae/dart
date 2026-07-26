@@ -251,7 +251,10 @@ export async function loadEmployment(companyKey) {
     const snap = await getDoc(employmentDoc(companyKey))
     if (!snap.exists()) return null
     const data = snap.data()
-    return { ...data, stale: Date.now() - (data.fetchedAt || 0) > EMPLOYMENT_TTL }
+    // 월 데이터가 없는 캐시는 쓸 수 없다. 조회에 실패한 순간이 캐시로 굳으면
+    // 하루 동안 "사업장을 찾지 못했습니다" 가 그대로 남는다.
+    const empty = !Array.isArray(data.months) || data.months.length === 0
+    return { ...data, stale: empty || Date.now() - (data.fetchedAt || 0) > EMPLOYMENT_TTL }
   } catch {
     return null
   }

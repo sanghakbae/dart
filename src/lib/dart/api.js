@@ -19,6 +19,14 @@ function loadIndex() {
       return r.text()
     })
     .then((text) => {
+      // 색인이 배포에 포함되지 않으면 개발 서버·Pages 가 index.html 을 돌려준다.
+      // 그대로 파싱하면 "검색 결과 없음" 처럼 보여 원인을 알 수 없다.
+      if (/^\s*</.test(text)) {
+        throw new Error(
+          '기업 목록(dart-corp-index.txt)이 없습니다. 로컬에서는 `npm run build:corp`, ' +
+            '배포본은 워크플로에서 DART_API_KEY 로 생성합니다.'
+        )
+      }
       const rows = []
       for (const line of text.split('\n')) {
         if (!line) continue

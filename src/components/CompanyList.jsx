@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react'
 import { Badge, Empty, Card } from './ui'
-import { MiniTrend } from './charts'
 import { growth } from '../lib/analyze/ratios'
 import { dateTimeText, abbrev, signedPct } from '../lib/format'
 
@@ -119,12 +118,17 @@ export default function CompanyList({ companies, activeKey, onSelect, onDelete, 
                   )}
                   <span aria-hidden="true">·</span>
                   <span>{dateTimeText(c.uploadedAt)}</span>
+                  {c.shared && (
+                    <>
+                      <span aria-hidden="true">·</span>
+                      <Badge tone="info">공통 노출</Badge>
+                    </>
+                  )}
                 </span>
               </span>
 
               {c.trend.length > 1 ? (
                 <span className="co-trend">
-                  <MiniTrend points={c.trend} label="매출액" />
                   <span className="co-trend-txt">
                     <span className="co-trend-v">{abbrev(c.trendLatest)}</span>
                     <span className={c.trendGrowth >= 0 ? 'up' : 'down'}>{signedPct(c.trendGrowth)}</span>
@@ -135,13 +139,6 @@ export default function CompanyList({ companies, activeKey, onSelect, onDelete, 
                 <span className="co-trend co-trend-empty">누적 연도 {c.years.length}개</span>
               )}
 
-              <span className="co-tags">
-                {c.opinion && <Badge tone={c.opinion.tone} dot>{c.opinion.label}</Badge>}
-                {(c.bases || []).length > 1
-                  ? c.bases.map((b) => <Badge key={b} tone={b === '연결' ? 'info' : 'muted'}>{b}</Badge>)
-                  : c.basis && <Badge tone="muted">{c.basis}</Badge>}
-                {c.shared && <Badge tone="info">공통 노출</Badge>}
-              </span>
               <span className="co-go" aria-hidden="true">›</span>
             </button>
             {onDelete && (

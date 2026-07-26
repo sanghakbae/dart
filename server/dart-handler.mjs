@@ -63,27 +63,71 @@ async function fetchUpstream(target) {
   throw new Error(`DART 가 리다이렉트를 반복합니다 (${new URL(url).pathname}). 상류에서 요청을 차단한 것으로 보입니다.`)
 }
 
+/** ZIP 중앙 디렉터리의 끝(EOCD)을 뒤에서 찾는다. 주석이 있으면 22바이트보다 뒤에 있다. */
+function findEocd(view) {
+  const min = Math.max(0, view.byteLength - 0xffff - 22)
+  for (let i = view.byteLength - 22; i >= min; i--) {
+    if (view.getUint32(i, true) === 0x06054b50) return i
+  }
+  return -1
+}
+
 /**
- * ZIP(단일 엔트리)에서 첫 파일을 꺼낸다. DART document.xml 응답은 XML 하나만 들어 있다.
+ * ZIP 에서 본문 XML 을 꺼낸다.
+ *
+ * 로컬 파일 헤더의 크기 필드만 믿으면 안 된다. DART 는 범용 플래그 bit 3(0x08) —
+ * 즉 데이터 서술자 방식 — 으로 압축해 보내므로 로컬 헤더의 압축·원본 크기가 둘 다 0이다.
+ * 그때 "남은 바이트 전부"로 폴백하면 데이터 서술자·중앙 디렉터리·EOCD 까지 압축
+ * 스트림에 밀려들어가 "Trailing junk found after the end of the compressed stream"
+ * 으로 터진다. 실제 크기는 중앙 디렉터리에만 들어 있으므로 그쪽을 읽는다.
+ *
+ * 엔트리가 여러 개면 원본 크기가 가장 큰 것을 본문으로 본다(나머지는 첨부·서식).
  * DecompressionStream 은 Worker·Node18+·최신 브라우저 모두 지원한다.
  */
-async function unzipFirst(buf) {
+export async function unzipMain(buf) {
   const view = new DataView(buf)
   if (view.getUint32(0, true) !== 0x04034b50) {
-    // 인증 실패 등은 ZIP 이 아니라 XML 에러로 온다.
+    // 인증 실패·없는 접수번호 등은 ZIP 이 아니라 XML 에러로 온다.
     const text = new TextDecoder('utf-8').decode(buf)
-    throw new Error(`DART 응답이 ZIP 이 아닙니다: ${text.slice(0, 200)}`)
+    const msg = /<message>([^<]*)<\/message>/.exec(text)?.[1]?.trim()
+    const status = /<status>([^<]*)<\/status>/.exec(text)?.[1]?.trim()
+    throw new Error(
+      msg ? `DART: ${msg}${status ? ` (${status})` : ''}` : `DART 응답이 ZIP 이 아닙니다: ${text.slice(0, 200)}`
+    )
   }
-  const method = view.getUint16(8, true)
-  const nameLen = view.getUint16(26, true)
-  const extraLen = view.getUint16(28, true)
-  const start = 30 + nameLen + extraLen
-  let size = view.getUint32(18, true)
-  if (!size) size = buf.byteLength - start
-  const body = buf.slice(start, start + size)
-  if (method === 0) return body
-  const ds = new DecompressionStream('deflate-raw')
-  const stream = new Blob([body]).stream().pipeThrough(ds)
+
+  const entries = []
+  const eocd = findEocd(view)
+  if (eocd >= 0) {
+    const count = view.getUint16(eocd + 10, true)
+    let off = view.getUint32(eocd + 16, true)
+    for (let i = 0; i < count && off + 46 <= view.byteLength; i++) {
+      if (view.getUint32(off, true) !== 0x02014b50) break
+      const nameLen = view.getUint16(off + 28, true)
+      const entry = {
+        method: view.getUint16(off + 10, true),
+        csize: view.getUint32(off + 20, true),
+        usize: view.getUint32(off + 24, true),
+        local: view.getUint32(off + 42, true),
+      }
+      if (entry.csize) entries.push(entry)
+      off += 46 + nameLen + view.getUint16(off + 30, true) + view.getUint16(off + 32, true)
+    }
+  }
+
+  // 중앙 디렉터리를 못 읽었을 때만 로컬 헤더로 폴백(크기가 실제로 적힌 옛 형식).
+  if (!entries.length) {
+    const csize = view.getUint32(18, true)
+    if (!csize) throw new Error('DART ZIP 의 중앙 디렉터리를 읽을 수 없습니다.')
+    entries.push({ method: view.getUint16(8, true), csize, usize: view.getUint32(22, true), local: 0 })
+  }
+
+  const main = entries.reduce((a, b) => (b.usize > a.usize ? b : a))
+  const start = main.local + 30 + view.getUint16(main.local + 26, true) + view.getUint16(main.local + 28, true)
+  const body = buf.slice(start, start + main.csize)
+  if (main.method === 0) return body
+  if (main.method !== 8) throw new Error(`지원하지 않는 ZIP 압축 방식입니다 (method ${main.method}).`)
+  const stream = new Blob([body]).stream().pipeThrough(new DecompressionStream('deflate-raw'))
   return await new Response(stream).arrayBuffer()
 }
 
@@ -107,6 +151,27 @@ function decodeDart(buf) {
       return new TextDecoder('utf-8').decode(buf)
     }
   }
+}
+
+/** 유형별 100건이 넘어가면 조용히 잘리므로 최대 이 페이지 수까지 이어 받는다(유형당 300건). */
+const MAX_PAGES = 3
+
+/**
+ * 공시 목록을 유형(pblntf_ty) 하나에 대해 받아온다. 최신순이라 첫 페이지가 가장 최근이다.
+ * @returns {Promise<{rows: object[], truncated: boolean, error?: string}>}
+ */
+async function listAll(base, ty, key) {
+  const rows = []
+  let totalPage = 1
+  for (let page = 1; page <= Math.min(totalPage, MAX_PAGES); page++) {
+    const d = await dartJson('list.json', { ...base, pblntf_ty: ty, page_no: String(page) }, key)
+    // 013 = 조회된 데이터 없음. 오류가 아니라 '해당 유형 공시 없음'이다.
+    if (d.status === '013') break
+    if (d.status !== '000') return { rows, truncated: false, error: `${d.status} ${d.message}` }
+    rows.push(...(d.list || []))
+    totalPage = Number(d.total_page) || 1
+  }
+  return { rows, truncated: totalPage > MAX_PAGES }
 }
 
 async function dartJson(path, params, key) {
@@ -146,21 +211,32 @@ export async function handleDart(req, key) {
     if (op === 'filings') {
       const corp = q.get('corp')
       if (!corp) return json({ error: 'corp 파라미터가 필요합니다.' }, 400, cors)
-      const d = await dartJson(
-        'list.json',
-        {
-          corp_code: corp,
-          bgn_de: q.get('from') || '20150101',
-          end_de: q.get('to') || ymd(new Date()),
-          page_count: '100',
-        },
-        key
-      )
-      // 013 = 조회된 데이터 없음. 오류가 아니라 '공시 없음'으로 다룬다.
-      if (d.status === '013') return json({ total: 0, list: [] }, 200, cors)
-      if (d.status !== '000') return json({ error: `${d.status} ${d.message}` }, 502, cors)
-      const list = (d.list || [])
+      const base = {
+        corp_code: corp,
+        bgn_de: q.get('from') || '20150101',
+        end_de: q.get('to') || ymd(new Date()),
+        page_count: '100',
+      }
+
+      // 공시유형으로 상류에서 걸러야 한다.
+      // 유형 없이 받으면 최근 100건만 오고, 대형사는 그게 전부 지분·수시공시라
+      // 감사보고서가 한 건도 안 걸린다(삼성전자 전체 4,646건 중 최근 100건).
+      //   A = 정기공시(사업·반기·분기보고서), F = 외부감사관련(감사보고서·연결감사보고서)
+      const pages = await Promise.all(['F', 'A'].map((ty) => listAll(base, ty, key)))
+
+      const rows = []
+      let truncated = false
+      for (const p of pages) {
+        if (p.error) return json({ error: p.error }, 502, cors)
+        rows.push(...p.rows)
+        truncated = truncated || p.truncated
+      }
+
+      const seen = new Set()
+      const list = rows
         .filter((r) => AUDIT_RE.test(r.report_nm || ''))
+        .filter((r) => (seen.has(r.rcept_no) ? false : seen.add(r.rcept_no)))
+        .sort((a, b) => String(b.rcept_dt).localeCompare(String(a.rcept_dt)))
         .map((r) => ({
           rceptNo: r.rcept_no,
           reportNm: (r.report_nm || '').trim(),
@@ -168,7 +244,7 @@ export async function handleDart(req, key) {
           flrNm: r.flr_nm,
           corpName: r.corp_name,
         }))
-      return json({ total: list.length, list }, 200, cors)
+      return json({ total: list.length, list, truncated }, 200, cors)
     }
 
     if (op === 'document') {
@@ -180,7 +256,7 @@ export async function handleDart(req, key) {
       const res = await fetchUpstream(durl)
       if (!res.ok) throw new Error(`DART HTTP ${res.status}`)
       const buf = await res.arrayBuffer()
-      const xml = decodeDart(await unzipFirst(buf))
+      const xml = decodeDart(await unzipMain(buf))
       return new Response(xml, {
         status: 200,
         headers: { 'content-type': 'text/xml; charset=utf-8', ...cors },

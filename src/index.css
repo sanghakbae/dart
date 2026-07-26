@@ -325,7 +325,7 @@ main { padding-bottom: 64px; }
      그리드로 열을 고정해 행끼리 세로로 맞춘다. */
   width: 100%;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 200px 190px 16px;
+  grid-template-columns: minmax(0, 1fr) 200px 16px;
   align-items: center;
   gap: 14px;
   padding: 13px clamp(12px, 2vw, 20px);
@@ -343,7 +343,6 @@ main { padding-bottom: 64px; }
   font-size: 13.5px; color: var(--text-3);
   font-variant-numeric: tabular-nums;
 }
-.co-tags { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 .co-go { color: var(--text-3); font-size: 18px; text-align: right; }
 
 .co-trend { display: flex; align-items: center; gap: 9px; justify-content: flex-start; min-width: 0; }
@@ -357,7 +356,6 @@ main { padding-bottom: 64px; }
   /* 좁은 화면에서는 열을 포기하고 위아래로 쌓는다 */
   .corow { grid-template-columns: 1fr; gap: 8px; }
   .co-go { display: none; }
-  .co-tags { justify-content: flex-start; }
 
   /* 탭이 9개라 가로 스크롤은 뒤쪽 탭이 안 보인다. 줄바꿈으로 전부 노출한다.
      줄이 나뉘면 밑줄 표시가 어느 줄에 걸린 건지 읽기 어려워, 알약 형태로 바꾼다. */
