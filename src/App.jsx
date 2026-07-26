@@ -55,6 +55,7 @@ export default function App() {
   const [content, setContent] = useState({}) // `${companyKey}/${reportId}` → 본문
   const [contentLoading, setContentLoading] = useState(false)
   const [periodType, setPeriodType] = useState(null)
+  const [basis, setBasis] = useState(null) // 추이에 쓸 연결/별도 기준
   const [theme, setTheme] = useState(() => localStorage.getItem('dart-theme') || 'auto')
   const contentReq = useRef(0)
 
@@ -278,6 +279,7 @@ export default function App() {
     setCompanyKey(c.key)
     setActiveId(null)
     setPeriodType(null)
+    setBasis(null)
     setTab('summary')
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }, [])
@@ -293,9 +295,37 @@ export default function App() {
     () => periodGroups.find((g) => g.type === periodType) || periodGroups[0] || null,
     [periodGroups, periodType]
   )
+  /**
+   * 연결과 별도는 합산 범위가 달라 한 축에 섞으면 비교가 성립하지 않는다.
+   * 무하유처럼 2024년엔 별도만, 2025년엔 별도·연결이 함께 있는 경우가 흔하므로
+   * 기준을 골라 볼 수 있게 하고, 기본값은 연도가 더 많이 쌓인 쪽으로 둔다.
+   */
+  const basisOptions = useMemo(() => {
+    const rows = activeGroup?.reports || []
+    const map = new Map()
+    for (const r of rows) {
+      const b = r.meta?.basis || '별도'
+      map.set(b, (map.get(b) || 0) + 1)
+    }
+    const latestBasis = rows[0]?.meta?.basis
+    return [...map.entries()]
+      .map(([value, count]) => ({ value, count }))
+      .sort((a, b) => b.count - a.count || (a.value === latestBasis ? -1 : 1))
+  }, [activeGroup])
+
+  const activeBasis = useMemo(
+    () => (basisOptions.some((o) => o.value === basis) ? basis : basisOptions[0]?.value || null),
+    [basisOptions, basis]
+  )
+
+  const trendReports = useMemo(
+    () => (activeGroup?.reports || []).filter((r) => !activeBasis || (r.meta?.basis || '별도') === activeBasis),
+    [activeGroup, activeBasis]
+  )
+
   const timeline = useMemo(
-    () => buildTimeline(activeGroup ? activeGroup.reports : [], { labelSuffix: activeGroup?.type === 'FY' ? '' : activeGroup?.label }),
-    [activeGroup]
+    () => buildTimeline(trendReports, { labelSuffix: activeGroup?.type === 'FY' ? '' : activeGroup?.label }),
+    [trendReports, activeGroup]
   )
 
   const activeContent = contentKey ? content[contentKey] : null
@@ -406,8 +436,15 @@ export default function App() {
             ) : (
               <>
                 {reports.length > 1 && (
-                  <div className="rep-scroll" role="group" aria-label="보고기간 선택">
-                    {reports.map((r) => (
+                  <div className="rep-groups">
+                    {groupByBasis(reports).map(([groupBasis, list]) => (
+                      <div className="rep-group" key={groupBasis}>
+                        <span className="rep-group-label">
+                          {groupBasis === '연결' ? '연결감사보고서' : '감사보고서 (별도)'}
+                          <i>{list.length}건</i>
+                        </span>
+                        <div className="rep-scroll" role="group" aria-label={`${groupBasis} 보고기간 선택`}>
+                          {list.map((r) => (
                       <button
                         key={r.id}
                         type="button"
@@ -422,13 +459,14 @@ export default function App() {
                           {r.meta?.periodType && r.meta.periodType !== 'FY' ? ` ${r.meta.periodLabel}` : ''}
                         </span>
                         <span className="m">
-                          <span>{r.meta?.basis}</span>
-                          <span>·</span>
                           <span>{r.meta?.docKind || '감사보고서'}</span>
                           <span>·</span>
                           <span>{r.opinion?.label || '의견 미확인'}</span>
                         </span>
                       </button>
+                          ))}
+                        </div>
+                      </div>
                     ))}
                   </div>
                 )}
@@ -449,10 +487,13 @@ export default function App() {
                   {tab === 'trend' && (
                     <TrendTab
                       timeline={timeline}
-                      reports={activeGroup?.reports || []}
+                      reports={trendReports}
                       periodGroups={periodGroups}
                       periodType={activeGroup?.type}
                       onPeriodType={setPeriodType}
+                      basisOptions={basisOptions}
+                      basis={activeBasis}
+                      onBasis={setBasis}
                     />
                   )}
                   {tab === 'ratio' && <RatioTab report={mergedActive} timeline={timeline} />}
@@ -493,6 +534,17 @@ export default function App() {
       </div>
     </>
   )
+}
+
+/** 보고서를 연결/별도로 묶는다. 별도를 먼저 보여준다(대개 연도가 더 길다). */
+function groupByBasis(reports) {
+  const map = new Map()
+  for (const r of reports) {
+    const b = r.meta?.basis || '별도'
+    if (!map.has(b)) map.set(b, [])
+    map.get(b).push(r)
+  }
+  return [...map.entries()].sort((a, b) => b[1].length - a[1].length || (a[0] === '별도' ? -1 : 1))
 }
 
 function summaryOf(report) {

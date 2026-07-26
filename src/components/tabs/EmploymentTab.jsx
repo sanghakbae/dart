@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Card, Tile, Empty, Callout, Badge } from '../ui'
 import { fetchEmployment, yearlyAverages, turnoverRate } from '../../lib/nps/api'
+import { loadEmployment, saveEmployment } from '../../lib/storage'
 import { hasProxy } from '../../lib/proxyBase.js'
-import { abbrev, full } from '../../lib/format'
+import { abbrev, full, dateTimeText } from '../../lib/format'
 import { HeadcountChart } from '../charts'
 
 /**
@@ -16,23 +17,61 @@ export default function EmploymentTab({ report, timeline }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [fetchedAt, setFetchedAt] = useState(null)
+  const [refreshing, setRefreshing] = useState(false)
+  const [reloadKey, setReloadKey] = useState(0)
 
   const company = report?.meta?.company
   const bizNo = report?.meta?.bizNo || null
+  const companyKey = report?.companyKey || null
 
+  /**
+   * DB 우선. 하루가 지났거나 캐시가 없을 때만 국민연금 API 를 부른다.
+   * (한 회사 조회에 상류 호출이 여러 번 들어가고 개발계정은 일 1,000건 한도다)
+   */
   useEffect(() => {
     if (!company) return
     let alive = true
     setLoading(true)
     setError(null)
-    fetchEmployment(company, bizNo)
-      .then((r) => alive && setData(r))
+
+    const pull = async (force) => {
+      const cached = force ? null : await loadEmployment(companyKey)
+      if (cached && !cached.stale) return { payload: cached, from: 'db' }
+
+      try {
+        const fresh = await fetchEmployment(company, bizNo)
+        const saved = await saveEmployment(companyKey, { ...fresh, name: company, bizNo })
+        return { payload: { ...fresh, fetchedAt: Date.now() }, from: 'api', warning: saved.warning }
+      } catch (e) {
+        // 새로 받는 데 실패하면 오래된 캐시라도 보여준다.
+        if (cached) return { payload: cached, from: 'db-stale', warning: e.message }
+        throw e
+      }
+    }
+
+    pull(reloadKey > 0)
+      .then(({ payload, warning }) => {
+        if (!alive) return
+        setData(payload)
+        setFetchedAt(payload.fetchedAt || null)
+        if (warning) setError(warning)
+      })
       .catch((e) => alive && setError(e.message))
-      .finally(() => alive && setLoading(false))
+      .finally(() => {
+        if (!alive) return
+        setLoading(false)
+        setRefreshing(false)
+      })
     return () => {
       alive = false
     }
-  }, [company, bizNo])
+  }, [company, bizNo, companyKey, reloadKey])
+
+  const refresh = () => {
+    setRefreshing(true)
+    setReloadKey((k) => k + 1)
+  }
 
   const months = data?.months || []
   const years = useMemo(() => yearlyAverages(months), [months])
@@ -61,7 +100,22 @@ export default function EmploymentTab({ report, timeline }) {
 
   if (loading) return <Card><Empty title="국민연금에서 고용 정보를 불러오는 중입니다…" /></Card>
 
-  if (error) {
+  // 갱신 시각과 다시 받기. DB 캐시를 쓰기 때문에 언제 받은 값인지 밝혀 둔다.
+  const freshness = (
+    <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+      <span className="chip">
+        {fetchedAt ? `${dateTimeText(fetchedAt)} 기준` : '갱신 시각 미확인'}
+      </span>
+      <button className="btn btn-sm btn-ghost" type="button" onClick={refresh} disabled={refreshing}>
+        {refreshing ? '받는 중…' : '지금 다시 받기'}
+      </button>
+    </div>
+  )
+
+  // 새로 받는 데 실패했어도 예전 캐시가 있으면 그걸 보여주고 경고만 띄운다.
+  if (error && data?.found && months.length) {
+    // 아래 본문을 그대로 렌더하고, 맨 위에 경고를 얹는다.
+  } else if (error) {
     return (
       <Card title="고용 현황">
         <Callout tone="warn">
@@ -77,7 +131,7 @@ export default function EmploymentTab({ report, timeline }) {
 
   if (!data?.found || !months.length) {
     return (
-      <Card title="고용 현황">
+      <Card title="고용 현황" right={freshness}>
         <Empty title={`${company} 의 국민연금 가입 사업장을 찾지 못했습니다`}>
           가입자 3인 이상 법인사업장만 공개됩니다. 사업장명이 감사보고서의 회사명과 다를 수 있습니다.
         </Empty>
@@ -90,9 +144,19 @@ export default function EmploymentTab({ report, timeline }) {
       <Card
         title="고용 현황"
         sub={`${data.workplace.name} · ${months[0].ym} ~ ${latest.ym}`}
-        right={<Badge tone="muted">국민연금</Badge>}
+        right={
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <Badge tone="muted">국민연금</Badge>
+            {freshness}
+          </div>
+        }
       >
         <div className="stack">
+          {error && (
+            <Callout tone="warn">
+              새로 받아오지 못해 저장된 값을 보여줍니다. ({error})
+            </Callout>
+          )}
           <div className="grid grid-tiles">
             <Tile label={`${latest.ym} 인원`} value={latest.headcount} unit="명" />
             <Tile label="입사" value={latest.joined} unit="명" />

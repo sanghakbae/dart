@@ -281,6 +281,13 @@ export function companyView(doc) {
     // 값이 비교치뿐이면 손익이 비어 추이에 안 잡히는 일이 있어 화면에서 구분해 준다.
     priorOnlyYears: priorOnly(all),
     periodTypes: types,
+    // 기준별로 어느 연도가 쌓였는지 — 화면에서 "별도 3개년 · 연결 2개년" 으로 보여준다.
+    byBasis: [...new Set(all.map((p) => p.basis || '별도'))]
+      .map((b) => ({
+        basis: b,
+        years: [...new Set(all.filter((p) => (p.basis || '별도') === b).map((p) => p.year))].sort((a, c) => a - c),
+      }))
+      .sort((a, c) => c.years.length - a.years.length),
     primaryType,
     primaryLabel: primary[0]?.periodLabel || '연간',
     trend,

@@ -491,6 +491,15 @@ main { padding-bottom: 64px; }
 .hide-sm { display: inline; }
 @media (max-width: 720px) { .hide-sm { display: none; } }
 
+/* 보고서 칩을 연결/별도로 묶어 보여준다 */
+.rep-groups { display: grid; gap: 12px; }
+.rep-group { display: grid; gap: 5px; }
+.rep-group-label {
+  display: flex; align-items: baseline; gap: 8px;
+  font-size: 13.5px; font-weight: 650; color: var(--text-2);
+}
+.rep-group-label i { font-style: normal; font-weight: 500; color: var(--text-3); font-size: 12.5px; }
+
 /* ── 탭 ───────────────────────────────────────────────── */
 .tabs {
   display: flex; gap: 4px;

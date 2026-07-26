@@ -97,6 +97,14 @@ export default function CompanyList({ companies, activeKey, onSelect, onDelete, 
                   </span>
                   <span aria-hidden="true">·</span>
                   <span>보고서 {c.reportCount}건</span>
+                  {(c.byBasis || []).length > 1 && (
+                    <>
+                      <span aria-hidden="true">·</span>
+                      <span title="기준별로 쌓인 연도 수">
+                        {c.byBasis.map((b) => `${b.basis} ${b.years.length}개년`).join(' / ')}
+                      </span>
+                    </>
+                  )}
                   {c.periodTypes.length > 1 && (
                     <>
                       <span aria-hidden="true">·</span>
@@ -129,7 +137,9 @@ export default function CompanyList({ companies, activeKey, onSelect, onDelete, 
 
               <span className="co-tags">
                 {c.opinion && <Badge tone={c.opinion.tone} dot>{c.opinion.label}</Badge>}
-                {c.basis && <Badge tone="muted">{c.basis}</Badge>}
+                {(c.bases || []).length > 1
+                  ? c.bases.map((b) => <Badge key={b} tone={b === '연결' ? 'info' : 'muted'}>{b}</Badge>)
+                  : c.basis && <Badge tone="muted">{c.basis}</Badge>}
                 {c.shared && <Badge tone="info">공통 노출</Badge>}
               </span>
               <span className="co-go" aria-hidden="true">›</span>

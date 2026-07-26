@@ -12,18 +12,10 @@ const GROWTH_METRICS = [
   { key: 'totalAssets', label: '자산총계' },
 ]
 
-export default function TrendTab({ timeline, reports, periodGroups = [], periodType, onPeriodType }) {
+export default function TrendTab({ timeline, reports, periodGroups = [], periodType, onPeriodType, basisOptions = [], basis, onBasis }) {
   const [metric, setMetric] = useState('revenue')
   const [group, setGroup] = useState('profitability')
 
-  // 연결과 별도는 합산 범위가 달라 한 축에 섞으면 비교가 성립하지 않는다.
-  const mixedBasis = useMemo(() => {
-    const bases = [...new Set((reports || []).map((r) => r.meta?.basis).filter(Boolean))]
-    if (bases.length < 2) return null
-    return (reports || [])
-      .map((r) => `${r.meta?.fiscalYear || '연도 미확인'}년 ${r.meta?.basis}`)
-      .join(' · ')
-  }, [reports])
 
   const amountKeys = [
     'revenue', 'operatingProfit', 'netIncome',
@@ -69,16 +61,26 @@ export default function TrendTab({ timeline, reports, periodGroups = [], periodT
     <div className="stack-lg">
       <Card
         title="추이 데이터 구성"
-        sub={`${timeline.years.length}개 연도 · 보고서 ${reports.length}건`}
+        sub={`${basis ? `${basis} · ` : ''}${timeline.years.length}개 연도 · 보고서 ${reports.length}건`}
         right={
-          periodGroups.length > 1 ? (
-            <Seg
-              ariaLabel="보고기간 종류"
-              value={periodType}
-              onChange={onPeriodType}
-              options={periodGroups.map((g) => ({ value: g.type, label: `${g.label} (${g.reports.length})` }))}
-            />
-          ) : null
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            {basisOptions.length > 1 && (
+              <Seg
+                ariaLabel="연결/별도 기준"
+                value={basis}
+                onChange={onBasis}
+                options={basisOptions.map((o) => ({ value: o.value, label: `${o.value} (${o.count})` }))}
+              />
+            )}
+            {periodGroups.length > 1 && (
+              <Seg
+                ariaLabel="보고기간 종류"
+                value={periodType}
+                onChange={onPeriodType}
+                options={periodGroups.map((g) => ({ value: g.type, label: `${g.label} (${g.reports.length})` }))}
+              />
+            )}
+          </div>
         }
       >
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
@@ -100,10 +102,11 @@ export default function TrendTab({ timeline, reports, periodGroups = [], periodT
             회계기준 변경이나 오류수정으로 과거 수치가 다시 작성된 경우, 더 나중 보고서에 실린 비교치를 사용합니다.
           </Callout>
         )}
-        {mixedBasis && (
-          <Callout tone="warn">
-            연결과 별도 기준이 섞여 있습니다 ({mixedBasis}). 연결은 종속회사까지 합산한 수치라
-            별도와 같은 축에서 비교하면 증감이 실제보다 크게 보일 수 있습니다.
+        {basisOptions.length > 1 && (
+          <Callout>
+            이 회사에는 <strong>{basisOptions.map((o) => `${o.value} ${o.count}건`).join(' · ')}</strong> 이 있습니다.
+            연결은 종속회사까지 합산한 수치라 별도와 한 축에서 비교하면 증감이 실제보다 크게 보입니다.
+            그래서 섞지 않고 <strong>{basis}</strong> 기준만으로 그렸습니다 — 위에서 바꿀 수 있습니다.
           </Callout>
         )}
         <Callout>

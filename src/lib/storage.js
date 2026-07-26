@@ -234,6 +234,41 @@ export async function loadCompanyReports(companyKey) {
 
 const PERIOD_RANK = { FY: 4, Q3: 3, H1: 2, Q1: 1 }
 
+/**
+ * 국민연금 고용 정보 캐시.
+ *
+ * 국민연금 API 는 월별 seq 를 먼저 모으고 각 월에 다시 조회를 거는 구조라 한 회사당
+ * 호출 수가 많다(개발계정 일 1,000건 한도). 그래서 받아온 결과를 DB 에 넣고
+ * 하루에 한 번만 새로 받는다 — 어차피 공단 자료도 월 단위로 갱신된다.
+ */
+const EMPLOYMENT_TTL = 24 * 60 * 60 * 1000
+
+const employmentDoc = (ck) => doc(db, COL, ck, 'employment', 'latest')
+
+export async function loadEmployment(companyKey) {
+  if (!usesFirestore || !companyKey) return null
+  try {
+    const snap = await getDoc(employmentDoc(companyKey))
+    if (!snap.exists()) return null
+    const data = snap.data()
+    return { ...data, stale: Date.now() - (data.fetchedAt || 0) > EMPLOYMENT_TTL }
+  } catch {
+    return null
+  }
+}
+
+export async function saveEmployment(companyKey, payload) {
+  if (!usesFirestore || !companyKey) return { saved: false, warning: null }
+  try {
+    await setDoc(employmentDoc(companyKey), sanitize({ ...payload, fetchedAt: Date.now() }))
+    return { saved: true, warning: null }
+  } catch (e) {
+    return { saved: false, warning: firestoreHint(e) }
+  }
+}
+
+export { EMPLOYMENT_TTL }
+
 export async function loadContent(companyKey, reportId) {
   if (!usesFirestore) return null
   return loadContentFromFirestore(companyKey, reportId)

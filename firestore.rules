@@ -56,6 +56,16 @@ service cloud.firestore {
         || request.resource.data.get('shared', false) == resource.data.get('shared', false)
       );
 
+      // 국민연금 고용 정보 캐시(하루 1회 갱신). 감사보고서 원문이 아니라
+      // 공개 API 결과라 로그인한 사용자면 읽고 쓸 수 있다.
+      match /employment/{docId} {
+        allow read: if signedIn();
+        allow create, update: if signedIn()
+          && request.resource.data.keys().hasAll(['fetchedAt'])
+          && request.resource.data.fetchedAt is int;
+        allow delete: if signedIn();
+      }
+
       match /reports/{reportId} {
         allow read: if signedIn();
         allow delete: if signedIn();
