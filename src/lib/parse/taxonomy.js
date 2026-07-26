@@ -48,11 +48,13 @@ export const ACCOUNTS = [
   { key: 'otherEquity', stmt: 'BS', label: '기타자본항목', level: 2, syn: ['기타자본항목', '기타포괄손익누계액', '기타자본구성요소'] },
   { key: 'nonControlling', stmt: 'BS', label: '비지배지분', level: 2, syn: ['비지배지분'] },
   { key: 'totalEquity', stmt: 'BS', label: '자본총계', level: 0, syn: ['자본총계', '자본 총계', '자본합계'] },
-  { key: 'totalLiabEquity', stmt: 'BS', label: '부채와자본총계', level: 0, syn: ['부채와자본총계', '부채 및 자본총계', '부채와 자본 총계'] },
+  { key: 'totalLiabEquity', stmt: 'BS', label: '부채와자본총계', level: 0, syn: ['부채와자본총계', '부채및자본총계', '부채 및 자본총계', '부채와 자본 총계'] },
 
   // ── 손익계산서 ──────────────────────────────────────────────
   { key: 'revenue', stmt: 'IS', label: '매출액', level: 0, syn: ['수익(매출액)', '매출액', '영업수익', '매출', '영업수익(매출액)'] },
-  { key: 'cogs', stmt: 'IS', label: '매출원가', level: 1, syn: ['매출원가', '영업비용'] },
+  { key: 'cogs', stmt: 'IS', label: '매출원가', level: 1, syn: ['매출원가'] },
+  // 영업수익/영업비용 구조(서비스업)에서는 매출원가·매출총이익 개념이 없다.
+  { key: 'operatingExpense', stmt: 'IS', label: '영업비용', level: 1, syn: ['영업비용'] },
   { key: 'grossProfit', stmt: 'IS', label: '매출총이익', level: 0, syn: ['매출총이익', '매출총이익(손실)', '매출총손실'] },
   { key: 'sgna', stmt: 'IS', label: '판매비와관리비', level: 1, syn: ['판매비와관리비', '판매비 및 관리비', '판매비와 관리비'] },
   { key: 'operatingProfit', stmt: 'IS', label: '영업이익', level: 0, syn: ['영업이익(손실)', '영업이익', '영업손실'] },
@@ -63,7 +65,8 @@ export const ACCOUNTS = [
   { key: 'pretaxProfit', stmt: 'IS', label: '법인세비용차감전순이익', level: 1, syn: ['법인세비용차감전순이익(손실)', '법인세비용차감전순이익', '법인세비용차감전순손실', '법인세차감전순이익'] },
   { key: 'incomeTax', stmt: 'IS', label: '법인세비용', level: 2, syn: ['법인세비용', '법인세수익'] },
   { key: 'netIncome', stmt: 'IS', label: '당기순이익', level: 0, syn: ['당기순이익(손실)', '분기순이익(손실)', '당기순이익', '당기순손실', '연결당기순이익'] },
-  { key: 'eps', stmt: 'IS', label: '주당순이익', level: 2, syn: ['기본주당순이익', '주당순이익(손실)', '주당순이익', '기본및희석주당순이익'], perShare: true },
+  { key: 'eps', stmt: 'IS', label: '기본주당이익', level: 2, syn: ['기본주당순이익(손실)', '기본주당순이익', '기본주당이익(손실)', '기본주당이익', '주당순이익(손실)', '주당순이익', '기본및희석주당순이익', '주당이익(손실)'], perShare: true },
+  { key: 'dilutedEps', stmt: 'IS', label: '희석주당이익', level: 2, syn: ['희석주당이익(손실)', '희석주당이익', '희석주당순이익'], perShare: true },
 
   // ── 포괄손익 ────────────────────────────────────────────────
   { key: 'otherCI', stmt: 'CI', label: '기타포괄손익', level: 1, syn: ['기타포괄손익', '세후기타포괄손익'] },
@@ -74,7 +77,7 @@ export const ACCOUNTS = [
   { key: 'cfInvesting', stmt: 'CF', label: '투자활동현금흐름', level: 0, syn: ['투자활동현금흐름', '투자활동으로 인한 현금흐름', '투자활동으로인한현금흐름'] },
   { key: 'cfFinancing', stmt: 'CF', label: '재무활동현금흐름', level: 0, syn: ['재무활동현금흐름', '재무활동으로 인한 현금흐름', '재무활동으로인한현금흐름'] },
   { key: 'capex', stmt: 'CF', label: '유형자산의 취득', level: 2, syn: ['유형자산의 취득', '유형자산의취득'] },
-  { key: 'cfNetChange', stmt: 'CF', label: '현금의 증가(감소)', level: 1, syn: ['현금및현금성자산의순증가', '현금및현금성자산의 순증가(감소)', '현금의증가(감소)', '현금및현금성자산의증가(감소)'] },
+  { key: 'cfNetChange', stmt: 'CF', label: '현금의 증가(감소)', level: 1, syn: ['현금및현금성자산의순증가(감소)', '현금및현금성자산의순증가', '현금및현금성자산의 순증가(감소)', '현금및현금성자산의증가(감소)', '현금및현금성자산의증가', '현금및현금성자산의감소', '현금의증가(감소)', '현금의증가', '현금의감소'] },
   { key: 'cfBegin', stmt: 'CF', label: '기초 현금', level: 2, syn: ['기초의현금및현금성자산', '기초 현금및현금성자산', '기초의 현금'] },
   { key: 'cfEnd', stmt: 'CF', label: '기말 현금', level: 2, syn: ['기말의현금및현금성자산', '기말 현금및현금성자산', '기말의 현금'] },
 ]
@@ -89,11 +92,17 @@ export function normalizeLabel(s) {
   return String(s || '')
     .replace(/\s+/g, '')
     .replace(/[Ⅰ-Ⅻ]/g, '')
+    .replace(/[IVX]{1,4}\./g, '')       // VIII.당기순이익 처럼 로마자를 영문으로 쓴 경우
     .replace(/[·・]/g, '')
+    .replace(/^\(\d{1,2}\)/, '')       // (3) 무형자산
     .replace(/^[0-9]+[.)]/, '')
     .replace(/^[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ][.)]?/, '')
+    // 로마숫자를 떼고 나면 "Ⅰ. 영업수익" → ".영업수익" 처럼 구두점이 남는다.
+    .replace(/^[.)\-–·]+/, '')
     .replace(/^[가-힣][.)]\s*/, (m) => (/^[가-하][.)]/.test(m) ? '' : m))
     .replace(/\(?주\s*\d+(?:[,·]\s*\d+)*\)?/g, '')
+    // 주석 참조 열이 라벨로 흘러든 경우: "영업수익23,31,32" → "영업수익"
+    .replace(/(?<=[가-힣)\]])[\d,]{1,24}$/, '')
     .trim()
 }
 
@@ -102,21 +111,25 @@ export function normalizeLabel(s) {
  * @param {string} label 원문 라벨
  * @param {string|null} stmtHint 현재 섹션(BS/IS/...)
  */
+// K-IFRS 는 손익계산서 항목을 포괄손익계산서 하나에 담는다. 둘을 같은 묶음으로 본다.
+const COMPATIBLE = { IS: ['IS', 'CI'], CI: ['CI', 'IS'] }
+const fits = (stmt, hint) => !hint || stmt === hint || (COMPATIBLE[hint] || []).includes(stmt)
+
 export function matchAccount(label, stmtHint) {
   const norm = normalizeLabel(label)
   if (!norm || norm.length > 40) return null
 
-  // 1) 현재 섹션 안에서 완전일치
+  // 1) 현재 섹션(및 호환 섹션) 안에서 완전일치
   for (const c of FLAT) {
-    if (c.norm === norm && (!stmtHint || c.stmt === stmtHint)) return c
+    if (c.norm === norm && fits(c.stmt, stmtHint)) return c
   }
-  // 2) 섹션 무관 완전일치 (손익 항목이 포괄손익계산서에 함께 나오는 경우 등)
+  // 2) 섹션 무관 완전일치
   for (const c of FLAT) {
     if (c.norm === norm) return c
   }
   // 3) 접두 포함 매칭 — '영업이익(손실)' 같은 변형 흡수
   for (const c of FLAT) {
-    if (norm.length <= 24 && norm.startsWith(c.norm) && (!stmtHint || c.stmt === stmtHint)) return c
+    if (norm.length <= 24 && norm.startsWith(c.norm) && fits(c.stmt, stmtHint)) return c
   }
   return null
 }

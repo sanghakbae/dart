@@ -10,14 +10,15 @@ export function parseMeta(doc) {
   const text = doc.fullText
   const head = text.slice(0, 6000)
   const period = detectPeriodType(text)
+  const fiscalYear = findFiscalYear(text)
 
   return {
     periodType: period.type,        // FY · H1 · Q3 · Q1
     periodLabel: period.label,     // 연간 · 반기 · 3분기 · 1분기
     company: findCompany(head, doc),
     auditor: findAuditor(text),
-    reportDate: findReportDate(text),
-    fiscalYear: findFiscalYear(text),
+    reportDate: findReportDate(text, fiscalYear),
+    fiscalYear,
     termNo: extractTermNo(text),
     basis: /연결\s*재무제표|연결재무상태표|연결감사보고서/.test(text) ? '연결' : '별도',
     periodLabels: findPeriodLabels(text),
@@ -87,17 +88,42 @@ function findAuditor(text) {
   return null
 }
 
-function findReportDate(text) {
-  const pats = [
-    /(20\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일\s*[\s\S]{0,40}?회계법인/,
-    /감사보고서일\s*[:：]?\s*(20\d{2})[.\-년\s]+(\d{1,2})[.\-월\s]+(\d{1,2})/,
-    /(20\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/g,
+/**
+ * 감사보고서일.
+ * "이 감사보고서는 감사보고서일(2025년 3월 21일) 현재로 유효…" 처럼 명시된 표기가 가장 정확하다.
+ * 없으면 보고기간 종료일 이후에 처음 나오는 날짜를 쓴다 — 본문에는 회계기간 날짜가
+ * 수없이 등장해서 단순히 '첫 날짜'를 잡으면 사업연도 개시일(1월 1일)이 걸린다.
+ */
+function findReportDate(text, fiscalYear) {
+  const explicit = [
+    /감사보고서일\s*\(?\s*(20\d{2})\s*[년.\-/]\s*(\d{1,2})\s*[월.\-/]\s*(\d{1,2})\s*일?\s*\)?/,
+    /검토보고서일\s*\(?\s*(20\d{2})\s*[년.\-/]\s*(\d{1,2})\s*[월.\-/]\s*(\d{1,2})\s*일?\s*\)?/,
   ]
-  for (const re of pats) {
+  for (const re of explicit) {
     const m = re.exec(text)
-    if (m) return `${m[1]}-${String(m[2]).padStart(2, '0')}-${String(m[3]).padStart(2, '0')}`
+    if (m) return iso(m)
   }
-  return null
+
+  const all = [...text.matchAll(/(20\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/g)]
+  if (!all.length) return null
+
+  if (fiscalYear) {
+    // 보고기간 종료(사업연도 말) 이후 ~ 1년 이내의 가장 이른 날짜가 감사보고서일이다.
+    const after = all
+      .map((m) => ({ m, t: Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) }))
+      .filter((d) => d.t > Date.UTC(fiscalYear, 11, 31) && d.t <= Date.UTC(fiscalYear + 1, 11, 31))
+      .sort((a, b) => a.t - b.t)
+    if (after.length) return iso(after[0].m)
+  }
+
+  // 회계법인 서명 근처의 날짜
+  const nearFirm = /(20\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일[^\n]{0,30}\n?[^\n]{0,30}회계법인/.exec(text)
+  if (nearFirm) return iso(nearFirm)
+  return iso(all[all.length - 1])
+}
+
+function iso(m) {
+  return `${m[1]}-${String(m[2]).padStart(2, '0')}-${String(m[3]).padStart(2, '0')}`
 }
 
 /**

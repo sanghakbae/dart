@@ -97,6 +97,8 @@ export function periodEntriesOf(report) {
       periodLabel: meta.periodLabel || '연간',
       basis: meta.basis || '별도',
       reportId,
+      // 어느 보고서가 실은 값인지 — 나중 보고서의 재작성치가 옛 수치를 대체한다.
+      sourceYear: meta.fiscalYear ?? year,
       fromPrior: idx === 1,
       values: slot,
       opinion: idx === 0 ? report.opinion || null : null,
@@ -122,12 +124,26 @@ export function accumulateCompany(prev, report) {
   const periods = { ...(base.periods || {}) }
   for (const [pk, entry] of Object.entries(periodEntriesOf(report))) {
     const old = periods[pk]
-    // 당기로 보고된 값이 전기 비교치보다 정확하다. 전기 값으로 당기 값을 덮지 않는다.
-    if (old && !old.fromPrior && entry.fromPrior) {
-      periods[pk] = { ...old, values: { ...entry.values, ...old.values } }
+    if (!old) {
+      periods[pk] = entry
       continue
     }
-    periods[pk] = old ? { ...old, ...entry, values: { ...old.values, ...entry.values } } : entry
+
+    // 어느 쪽 수치를 남길지: 더 나중 보고서가 이긴다.
+    // 회계기준 변경·오류수정으로 과거 수치가 재작성되면 나중 보고서의 비교치가 맞다.
+    // 같은 보고서 연도면 '당기'로 실린 값이 '전기' 비교치보다 정확하다.
+    const oldSrc = old.sourceYear ?? old.year ?? -1
+    const newSrc = entry.sourceYear ?? entry.year ?? -1
+    const takeNew = newSrc > oldSrc || (newSrc === oldSrc && old.fromPrior && !entry.fromPrior)
+
+    const restated =
+      takeNew &&
+      newSrc !== oldSrc &&
+      Object.entries(entry.values).some(([k, v]) => old.values[k] != null && old.values[k] !== v)
+
+    periods[pk] = takeNew
+      ? { ...old, ...entry, restated: restated || old.restated || false, values: { ...old.values, ...entry.values } }
+      : { ...old, values: { ...entry.values, ...old.values } }
   }
 
   const aliases = [...new Set([...(base.aliases || []), meta.company].filter(Boolean))]

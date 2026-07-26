@@ -24,6 +24,12 @@ export async function analyzeFile(file, onProgress) {
 
   // 누적 키가 '연도'이므로 연도 판정이 가장 중요하다.
   // 재무제표 기간 헤더에서 직접 읽은 연도가 표지 추정값보다 정확하다.
+  // 연결/별도는 본문 언급이 아니라 실제 본표 제목으로 판정한 값이 정확하다.
+  if (statements.basis && statements.basis !== meta.basis) {
+    meta.basisFromText = meta.basis
+    meta.basis = statements.basis
+  }
+
   const resolvedYear = statements.periods?.[0]?.year ?? null
   if (resolvedYear && statements.periods[0].source === 'statement' && resolvedYear !== meta.fiscalYear) {
     meta.fiscalYearFromCover = meta.fiscalYear

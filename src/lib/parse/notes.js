@@ -82,6 +82,18 @@ function amountCount(cells) {
 const HEADER_HINT = /구\s*분|당\s*기|전\s*기|과\s*목|금\s*액|내\s*역|합\s*계|계정과목|항\s*목/
 
 /**
+ * 표 한 줄을 [항목명, 금액…] 으로 정규화한다.
+ * DART 원문은 "합 계" 처럼 글자 사이에 공백이 있어 항목명이 여러 셀로 갈리는데,
+ * 그대로 두면 줄마다 열 수가 달라져 빈 칸이 생긴다.
+ */
+function normalizeRow(cells) {
+  const firstAmount = cells.findIndex((c) => parseAmount(c) !== null)
+  if (firstAmount <= 0) return [...cells]
+  const label = cells.slice(0, firstAmount).join(' ').replace(/\s+/g, ' ').trim()
+  return [label, ...cells.slice(firstAmount)]
+}
+
+/**
  * 주석 본문 줄들을 문단 블록과 표 블록으로 나눈다.
  * 금액 셀이 2개 이상인 줄이 이어지면 표로 본다(당기·전기 두 열이 기본 형태).
  */
@@ -109,10 +121,19 @@ function buildContent(lines) {
       }
     }
     flushPara()
-    const width = Math.max(...table.map((r) => r.length), header ? header.length : 0)
+    const width = Math.max(...table.map((r) => r.length))
+
+    // "구 분" 처럼 글자 사이 공백이 있는 머리행은 여러 셀로 갈린다.
+    // 데이터 열 수보다 많으면 앞쪽 여분을 하나로 합쳐 열을 맞춘다.
+    let head = header
+    if (head && head.length > width) {
+      const extra = head.length - width
+      head = [head.slice(0, extra + 1).join(' ').replace(/\s+/g, ' ').trim(), ...head.slice(extra + 1)]
+    }
+
     out.push({
       type: 'table',
-      header,
+      header: head,
       rows: table.map((r) => [...r, ...Array(Math.max(0, width - r.length)).fill('')]),
     })
     table = []
@@ -121,7 +142,7 @@ function buildContent(lines) {
   for (const line of lines) {
     const isRow = line.cells.length >= 2 && amountCount(line.cells) >= 2
     if (isRow) {
-      table.push(line.cells)
+      table.push(normalizeRow(line.cells))
       continue
     }
     if (table.length) flushTable()

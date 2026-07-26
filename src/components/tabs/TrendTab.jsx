@@ -93,6 +93,13 @@ export default function TrendTab({ timeline, reports, periodGroups = [], periodT
             누적 기간이 달라 한 축에 섞으면 비교가 성립하지 않으므로 <strong>{periodGroups.find((g) => g.type === periodType)?.label}</strong> 보고서만으로 추이를 만들었습니다.
           </Callout>
         )}
+        {timeline.rows.some((r) => r.__restated) && (
+          <Callout tone="warn">
+            일부 연도 수치가 <strong>재작성</strong>되었습니다
+            ({timeline.rows.filter((r) => r.__restated).map((r) => r.label).join(', ')}).
+            회계기준 변경이나 오류수정으로 과거 수치가 다시 작성된 경우, 더 나중 보고서에 실린 비교치를 사용합니다.
+          </Callout>
+        )}
         {mixedBasis && (
           <Callout tone="warn">
             연결과 별도 기준이 섞여 있습니다 ({mixedBasis}). 연결은 종속회사까지 합산한 수치라

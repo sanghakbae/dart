@@ -297,14 +297,23 @@ test('회사 문서에 보고기간이 누적된다', () => {
   assert.equal(co.periods['FY-2023-s'].fromPrior, true)
   assert.equal(co.reportCount, 1)
 
-  // 2023 감사보고서를 추가로 올리면 2023 이 '당기' 값으로 갱신된다
+  // 2023 감사보고서를 나중에 올려도, 2024 보고서에 실린 2023 비교치가 더 최신이라 유지된다
+  // (회계기준 변경·오류수정으로 과거 수치가 재작성되면 나중 보고서 쪽이 맞다)
   co = accumulateCompany(co, mk(2023, 'FY', { revenue: { current: 81, prior: 60 } }))
-  assert.equal(co.periods['FY-2023-s'].values.revenue, 81, '당기 값이 전기 비교치를 덮어써야 한다')
-  assert.equal(co.periods['FY-2023-s'].fromPrior, false)
+  assert.equal(co.periods['FY-2023-s'].values.revenue, 80, '나중 보고서(2024)의 비교치가 우선한다')
   assert.equal(co.periods['FY-2024-s'].values.revenue, 100, '기존 연도는 유지되어야 한다')
+  assert.equal(co.periods['FY-2022-s'].values.revenue, 60, '2023 보고서만 가진 연도는 새로 쌓인다')
   assert.deepEqual(Object.keys(co.periods).sort(), ['FY-2022-s', 'FY-2023-s', 'FY-2024-s'])
   assert.equal(co.reportCount, 2)
   assert.equal(co.latest.fiscalYear, 2024, '최신은 사업연도가 큰 쪽')
+
+  // 재작성: 나중 보고서가 과거 연도 수치를 다르게 실으면 그 값으로 대체하고 표시를 남긴다
+  let re = accumulateCompany(null, mk(2024, 'FY', { netIncome: { current: 680, prior: 2510 } }))
+  assert.equal(re.periods['FY-2023-s'].values.netIncome, 2510)
+  re = accumulateCompany(re, mk(2025, 'FY', { netIncome: { current: 767, prior: -1976 } }))
+  assert.equal(re.periods['FY-2024-s'].values.netIncome, -1976, '2025 보고서의 재작성치가 우선한다')
+  assert.equal(re.periods['FY-2024-s'].restated, true)
+  assert.equal(re.periods['FY-2023-s'].values.netIncome, 2510, '더 옛 연도는 그대로 남는다')
 
   // 같은 보고서를 다시 올려도 보고서 수가 늘지 않는다 (중복 누적 방지)
   co = accumulateCompany(co, mk(2024, 'FY', { revenue: { current: 100, prior: 80 } }))
@@ -328,7 +337,7 @@ test('회사 문서에 보고기간이 누적된다', () => {
   assert.equal(view.name, '주식회사 무하유')
   assert.equal(view.primaryType, 'FY')
   assert.equal(view.trendBasis, '별도')
-  assert.deepEqual(view.trend.map((p) => p.value), [60, 81, 100])
+  assert.deepEqual(view.trend.map((p) => p.value), [60, 80, 100])
   assert.deepEqual(view.bases.sort(), ['별도', '연결'])
 
   // 연결 보고서가 더 많이 쌓이면 연결 기준으로 넘어간다
@@ -336,6 +345,89 @@ test('회사 문서에 보고기간이 누적된다', () => {
   co2 = accumulateCompany(co2, mk(2022, 'FY', { revenue: { current: 90, prior: 70 } }, '연결'))
   co2 = accumulateCompany(co2, mk(2024, 'FY', { revenue: { current: 100, prior: 80 } }, '별도'))
   assert.equal(companyView(co2).trendBasis, '연결')
+})
+
+test('DART 원문 서식 — 글자 사이 공백 제목·주석참조 열·3열 비교표', () => {
+  // 실제 DART PDF 는 제목을 "재 무 상 태 표" 처럼 글자마다 띄우고,
+  // 주석 참조 열에 "23,31,32" 처럼 번호를 쉼표로 나열하며,
+  // K-IFRS 최초채택 해에는 당기말·전기말·전기초 세 열을 싣는다.
+  const d = docFromText(
+    [
+      '독립된 감사인의 감사보고서',
+      '주식회사 무하유 주주 및 이사회 귀중',
+      '감사의견',
+      '우리의 의견으로 재무제표는 중요성의 관점에서 공정하게 표시하고 있습니다.',
+      '이 감사보고서는 감사보고서일(2026년 3월 26일) 현재로 유효한 것입니다.',
+      '삼정회계법인',
+      '재 무 상 태 표',
+      '제 15(당) 기 2025년 12월 31일 현재',
+      '제 14(전) 기 2024년 12월 31일 현재',
+      '회사명 : 주식회사 무하유\t(단위 : 원)',
+      'Ⅰ. 유동자산\t26,251,731,189\t22,188,168,026\t20,853,982,155',
+      'Ⅰ. 자본금\t19\t2,000,000,000\t100,000,000\t100,000,000',
+      '자 | 산 | 총 | 계'.replace(/ \| /g, '\t') + '\t34,193,961,469\t30,344,985,559\t28,719,100,483',
+      '부 채 및 자 본 총 계\t34,193,961,469\t30,344,985,559\t28,719,100,483',
+      '포 괄 손 익 계 산 서',
+      '제 15(당) 기 2025년 1월 1일부터 2025년 12월 31일까지',
+      'Ⅰ. 영업수익\t23,31,32\t12,714,589,429\t11,064,018,372',
+      'Ⅱ. 영업비용\t24,25\t10,515,123,932\t11,503,374,592',
+      'Ⅲ. 영업이익(손실)\t2,199,465,497\t(439,356,220)',
+      'Ⅴ. 당기순이익(손실)\t767,076,809\t(1,976,143,886)',
+      '4. 선수금\t-\t18,392,800',
+      '19. 현금흐름표',
+      '이 주석은 재무제표의 일부입니다.',
+    ].join('\n')
+  )
+  const m = parseMeta(d)
+  const s = parseStatements(d, m)
+
+  // 글자 사이 공백 제목을 본표로 인식한다
+  const stmts = s.blocks.map((b) => b.stmt)
+  assert.ok(stmts.includes('BS'), '재 무 상 태 표 인식 실패')
+  assert.ok(stmts.includes('CI'), '포 괄 손 익 계 산 서 인식 실패')
+  // "19. 현금흐름표" 는 주석 표제라 본표가 아니다
+  assert.ok(!stmts.includes('CF'), '주석 표제를 본표로 오인')
+
+  // 주석 참조 열("23,31,32")을 금액으로 읽지 않는다
+  assert.equal(parseAmount('23,31,32'), null)
+  assert.equal(parseAmount('24,25'), null)
+  assert.equal(s.values.revenue.current, 12714589429)
+  assert.equal(s.values.revenue.prior, 11064018372)
+  assert.equal(s.values.operatingProfit.current, 2199465497)
+  assert.equal(s.values.operatingProfit.prior, -439356220)
+  assert.equal(s.values.netIncome.current, 767076809)
+
+  // 글자 사이 공백 계정과목과 3열 비교표(당기말·전기말·전기초)
+  assert.equal(s.values.totalAssets.current, 34193961469)
+  assert.equal(s.values.totalAssets.prior, 30344985559)
+  assert.equal(s.values.totalLiabEquity.current, 34193961469)
+  assert.equal(s.values.capitalStock.current, 2000000000) // 주석열 '19' 를 걸러야 통과
+
+  // "-" 는 자리를 지켜 당기/전기가 밀리지 않는다
+  const seonsu = s.blocks.flatMap((b) => b.rows).find((r) => /선수금/.test(r.label || ''))
+  assert.deepEqual(seonsu.values, [null, 18392800])
+
+  // 영업수익/영업비용 구조에는 매출총이익이 없다
+  assert.equal(s.values.grossProfit, undefined, '매출원가가 없는데 매출총이익을 만들면 안 된다')
+  assert.equal(s.values.operatingExpense.current, 10515123932)
+
+  assert.equal(m.reportDate, '2026-03-26')
+  assert.equal(s.basis, '별도', '본문에 연결 언급이 없으면 별도')
+})
+
+test('연결 본표 제목이면 연결로 판정한다', () => {
+  const d = docFromText(
+    [
+      '연 결 재 무 상 태 표',
+      '제 15(당) 기 2025년 12월 31일 현재',
+      '자 산 총 계\t34,188,231,721\t30,344,985,559',
+      '부 채 총 계\t23,343,055,283\t20,558,387,713',
+      '자 본 총 계\t10,845,176,438\t9,786,597,846',
+    ].join('\n')
+  )
+  const s = parseStatements(d, parseMeta(d))
+  assert.equal(s.basis, '연결')
+  assert.equal(s.values.totalAssets.current, 34188231721)
 })
 
 test('주석 안의 표는 문단으로 뭉개지 않고 표로 남는다', () => {

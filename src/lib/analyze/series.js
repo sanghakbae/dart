@@ -37,14 +37,19 @@ function buildTimelineInner(reports, suffix) {
 
   const upsert = (year, key, value, src, isCurrent) => {
     if (year == null || value == null) return
-    if (!byYear.has(year)) byYear.set(year, { year, values: {}, sources: [] })
+    if (!byYear.has(year)) byYear.set(year, { year, values: {}, sources: [], meta: {} })
     const slot = byYear.get(year)
-    const existing = slot.values[key]
-    // 같은 연도가 여러 보고서에 나오면 '당기'로 실린 값을 우선한다(전기 비교치보다 정확).
-    if (existing === undefined || (isCurrent && !slot.fromCurrent?.[key])) {
+    const prev = slot.meta[key]
+    // 같은 연도가 여러 보고서에 나오면 더 나중 보고서의 값을 쓴다.
+    // 회계기준 변경·오류수정으로 과거 수치가 재작성되면 나중 보고서의 비교치가 맞다.
+    // 같은 보고서 연도면 '당기'로 실린 값이 '전기' 비교치보다 정확하다.
+    const srcYear = src.fiscalYear ?? -1
+    const take =
+      !prev || srcYear > prev.srcYear || (srcYear === prev.srcYear && isCurrent && !prev.isCurrent)
+    if (take) {
+      if (prev && prev.value !== value && srcYear !== prev.srcYear) slot.restated = true
       slot.values[key] = value
-      slot.fromCurrent = slot.fromCurrent || {}
-      slot.fromCurrent[key] = isCurrent
+      slot.meta[key] = { srcYear, isCurrent, value }
     }
     if (!slot.sources.some((s) => s.id === src.id)) slot.sources.push(src)
   }
@@ -52,7 +57,13 @@ function buildTimelineInner(reports, suffix) {
   for (const rep of reports) {
     const periods = rep.periods || rep.statements?.periods || []
     const values = rep.values || rep.statements?.values || {}
-    const src = { id: rep.id, fileName: rep.meta?.fileName, company: rep.meta?.company, basis: rep.meta?.basis }
+    const src = {
+      id: rep.id,
+      fileName: rep.meta?.fileName,
+      company: rep.meta?.company,
+      basis: rep.meta?.basis,
+      fiscalYear: rep.meta?.fiscalYear ?? null,
+    }
     const curYear = periods[0]?.year ?? rep.meta?.fiscalYear ?? null
     const priYear = periods[1]?.year ?? (curYear != null ? curYear - 1 : null)
 
@@ -74,7 +85,14 @@ function buildTimelineInner(reports, suffix) {
 
   const rows = years.map((y) => {
     const slot = byYear.get(y)
-    return { year: y, label: `${y}년${suffix}`, ...slot.values, __ratios: slot.ratios, __sources: slot.sources }
+    return {
+      year: y,
+      label: `${y}년${suffix}`,
+      ...slot.values,
+      __ratios: slot.ratios,
+      __sources: slot.sources,
+      __restated: Boolean(slot.restated),
+    }
   })
 
   return { years, byYear, rows, sources: dedupeSources(reports) }

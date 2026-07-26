@@ -30,6 +30,14 @@ export function parseAmount(raw) {
   s = s.trim()
   if (!s || !NUM_BODY.test(s)) return null
 
+  // 주석 참조 열은 "23,31,32" 처럼 쉼표로 번호를 나열한다. 천단위 구분자는 항상
+  // 세 자리 묶음이므로, 묶음이 세 자리가 아니면 금액이 아니라 주석 번호다.
+  const compact = s.replace(/\s/g, '')
+  if (compact.includes(',')) {
+    const [intPart] = compact.split('.')
+    if (!/^\d{1,3}(,\d{3})+$/.test(intPart)) return null
+  }
+
   // 천단위 구분자 제거. 소수점은 마지막 점만 인정한다.
   const cleaned = s.replace(/[,\s]/g, '')
   const lastDot = cleaned.lastIndexOf('.')
