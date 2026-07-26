@@ -322,6 +322,15 @@ main { padding-bottom: 64px; }
   font-size: 14.5px; color: var(--text-3);
   font-variant-numeric: tabular-nums;
 }
+/* 전기 비교치로만 있는 연도 — 당기로 보고된 해와 구분한다. */
+.yr-prior { color: var(--text-3); }
+.yr-prior i {
+  font-style: normal; font-size: 10.5px; font-weight: 600;
+  margin-left: 3px; padding: 1px 4px; border-radius: 4px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  vertical-align: 1px;
+}
+
 .co-tags { display: flex; gap: 6px; flex-wrap: wrap; }
 .co-go { color: var(--text-3); font-size: 18px; flex: none; }
 

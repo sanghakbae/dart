@@ -5,6 +5,7 @@ import { parseStatements } from './statements.js'
 import { parseNotes } from './notes.js'
 import { parseShares } from './shares.js'
 import { parseSubmission } from './submission.js'
+import { parsePayroll } from './payroll.js'
 import { computeRatios, buildInsights } from '../analyze/ratios.js'
 import { companyKeyOf, reportIdOf } from '../company.js'
 
@@ -52,6 +53,9 @@ export async function analyzeFile(file, onProgress) {
   onProgress?.(0.93, '주주·주식 정보 정리 중')
   const shares = parseShares(doc, notes)
 
+  // 인건비. 국민연금 인원과 나누면 1인당 인건비가 나온다(고용 탭).
+  const payroll = parsePayroll(doc)
+
   onProgress?.(0.95, '재무비율 계산 중')
   const ratios = computeRatios(statements.values)
   const insights = buildInsights(statements.values, ratios)
@@ -76,6 +80,7 @@ export async function analyzeFile(file, onProgress) {
     values: statements.values,
     blocks: statements.blocks.map(serializeBlock),
     shares,
+    payroll,
     ratios,
     insights,
     quality,

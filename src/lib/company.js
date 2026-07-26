@@ -108,6 +108,10 @@ export function periodEntriesOf(report) {
       // 어느 보고서가 실은 값인지 — 나중 보고서의 재작성치가 옛 수치를 대체한다.
       sourceYear: meta.fiscalYear ?? year,
       fromPrior: idx === 1,
+      // 이 연도를 '당기'로 보고한 보고서가 있었는지. fromPrior 와는 다르다 —
+      // 나중 보고서의 전기 비교치가 이겨서 fromPrior 가 다시 true 로 덮여도,
+      // 당기 보고서를 한 번이라도 받았다는 사실은 유지돼야 한다.
+      reportedCurrent: idx === 0,
       values: slot,
       opinion: idx === 0 ? report.opinion || null : null,
       auditor: idx === 0 ? meta.auditor || null : null,
@@ -160,9 +164,13 @@ export function accumulateCompany(prev, report, owner) {
       newSrc !== oldSrc &&
       Object.entries(entry.values).some(([k, v]) => old.values[k] != null && old.values[k] !== v)
 
+    // 어느 쪽 수치를 쓰든, 당기로 보고된 적이 있다는 사실은 누적한다.
+    const reportedCurrent =
+      (old.reportedCurrent ?? !old.fromPrior) || (entry.reportedCurrent ?? !entry.fromPrior)
+
     periods[pk] = takeNew
-      ? { ...old, ...entry, restated: restated || old.restated || false, values: { ...old.values, ...entry.values } }
-      : { ...old, values: { ...entry.values, ...old.values } }
+      ? { ...old, ...entry, reportedCurrent, restated: restated || old.restated || false, values: { ...old.values, ...entry.values } }
+      : { ...old, reportedCurrent, values: { ...entry.values, ...old.values } }
   }
 
   const aliases = [...new Set([...(base.aliases || []), meta.company].filter(Boolean))]
@@ -203,6 +211,22 @@ export function accumulateCompany(prev, report, owner) {
     latest: better(candidate, base.latest) ? candidate : base.latest,
     updatedAt: Math.max(now, base.updatedAt || 0),
   }
+}
+
+/**
+ * 전기 비교치로만 존재하는 연도.
+ * 같은 연도에 fromPrior 가 아닌 항목이 하나라도 있으면 그 해는 당기로 보고된 것이다.
+ */
+function priorOnly(all) {
+  const reported = new Set()
+  const seen = new Set()
+  for (const p of all) {
+    if (p.year == null) continue
+    seen.add(p.year)
+    // reportedCurrent 가 없는 옛 문서는 fromPrior 로 대신 판단한다.
+    if (p.reportedCurrent ?? !p.fromPrior) reported.add(p.year)
+  }
+  return [...seen].filter((y) => !reported.has(y)).sort((a, b) => a - b)
 }
 
 /**
@@ -252,6 +276,10 @@ export function companyView(doc) {
     reportCount: doc.reportCount || (doc.reportIds || []).length,
     uploadedAt: doc.updatedAt || 0,
     years: [...new Set(all.map((p) => p.year))].sort((a, b) => a - b),
+    // 그 해를 '당기'로 보고한 보고서 없이, 다른 보고서의 전기 비교치로만 채워진 연도.
+    // 감사보고서는 당기와 전기를 함께 싣기 때문에 한 건만 올려도 연도가 둘로 늘어난다.
+    // 값이 비교치뿐이면 손익이 비어 추이에 안 잡히는 일이 있어 화면에서 구분해 준다.
+    priorOnlyYears: priorOnly(all),
     periodTypes: types,
     primaryType,
     primaryLabel: primary[0]?.periodLabel || '연간',

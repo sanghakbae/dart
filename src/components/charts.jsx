@@ -327,6 +327,60 @@ export function CashflowChart({ data, title, sub, note, height = 280 }) {
   )
 }
 
+/**
+ * 고용 추이. 재직 인원은 선, 입·퇴사는 막대다.
+ * 인원(100명대)과 입·퇴사(한 자리)는 자릿수가 달라 한 축에 올리면 막대가 안 보인다.
+ * 축을 둘로 나눈다.
+ */
+export function HeadcountChart({ months, title = '고용 추이', sub, note, height = 280 }) {
+  const data = (months || []).map((m) => ({
+    label: m.ym,
+    headcount: m.headcount,
+    joined: m.joined,
+    left: m.left == null ? null : -m.left, // 퇴사는 아래로
+  }))
+  if (!data.length) return null
+  return (
+    <ChartCard
+      title={title}
+      sub={sub}
+      note={note}
+      legend={[
+        { label: '재직 인원', color: SERIES[0] },
+        { label: '입사', color: SERIES[2] },
+        { label: '퇴사', color: SERIES[3] },
+      ]}
+      height={height}
+    >
+      <ComposedChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }} barGap={1} barCategoryGap="30%">
+        <CartesianGrid stroke={GRID} vertical={false} />
+        <XAxis dataKey="label" {...axisX} interval="preserveStartEnd" />
+        <YAxis yAxisId="head" {...axisY} tickFormatter={(v) => `${v}`} />
+        <YAxis yAxisId="flow" orientation="right" {...axisY} tickFormatter={(v) => `${Math.abs(v)}`} width={40} />
+        <Tooltip
+          cursor={{ fill: 'var(--surface-2)', opacity: 0.6 }}
+          content={({ active, payload, label }) => {
+            if (!active || !payload?.length) return null
+            const get = (k) => payload.find((p) => p.dataKey === k)?.value
+            return (
+              <div className="viz-tooltip">
+                <div className="tt-title">{label}</div>
+                <div>재직 {get('headcount') ?? '-'}명</div>
+                <div>입사 {get('joined') ?? '-'}명</div>
+                <div>퇴사 {get('left') == null ? '-' : Math.abs(get('left'))}명</div>
+              </div>
+            )
+          }}
+        />
+        <ReferenceLine yAxisId="flow" y={0} stroke={AXIS} />
+        <Bar yAxisId="flow" dataKey="joined" name="입사" fill={SERIES[2]} radius={[3, 3, 0, 0]} maxBarSize={14} />
+        <Bar yAxisId="flow" dataKey="left" name="퇴사" fill={SERIES[3]} radius={[0, 0, 3, 3]} maxBarSize={14} />
+        <Line yAxisId="head" type="monotone" dataKey="headcount" name="재직 인원" stroke={SERIES[0]} strokeWidth={2.2} dot={{ r: 2.5 }} />
+      </ComposedChart>
+    </ChartCard>
+  )
+}
+
 // ── 비율 추이: 지표마다 작은 차트 하나 (단위가 다른 지표를 한 축에 섞지 않는다) ──
 export function RatioSpark({ data, ratio, height = 150 }) {
   const points = data.filter((d) => d[ratio.key] != null)

@@ -76,7 +76,25 @@ export default function CompanyList({ companies, activeKey, onSelect, onDelete, 
               <span className="co-main">
                 <span className="co-name">{c.name}</span>
                 <span className="co-meta">
-                  <span>{c.years.length ? `${c.years.join(' · ')}년` : '연도 미확인'}</span>
+                  <span>
+                    {c.years.length
+                      ? c.years.map((y, i) => (
+                          <span key={y}>
+                            {i > 0 && ' · '}
+                            {c.priorOnlyYears?.includes(y) ? (
+                              // 그 해를 당기로 보고한 보고서가 없다 — 다른 보고서의 전기 비교치다.
+                              <span className="yr-prior" title={`${y}년은 다른 보고서의 전기 비교치입니다. 그 해를 당기로 보고한 감사보고서는 올라와 있지 않습니다.`}>
+                                {y}
+                                <i aria-hidden="true">비교</i>
+                              </span>
+                            ) : (
+                              y
+                            )}
+                          </span>
+                        ))
+                      : '연도 미확인'}
+                    {c.years.length ? '년' : ''}
+                  </span>
                   <span aria-hidden="true">·</span>
                   <span>보고서 {c.reportCount}건</span>
                   {c.periodTypes.length > 1 && (
@@ -112,7 +130,7 @@ export default function CompanyList({ companies, activeKey, onSelect, onDelete, 
               <span className="co-tags">
                 {c.opinion && <Badge tone={c.opinion.tone} dot>{c.opinion.label}</Badge>}
                 {c.basis && <Badge tone="muted">{c.basis}</Badge>}
-                {c.storage !== 'firestore' && <Badge tone="warn">브라우저에만 저장</Badge>}
+                {c.shared && <Badge tone="info">공통 노출</Badge>}
               </span>
               <span className="co-go" aria-hidden="true">›</span>
             </button>

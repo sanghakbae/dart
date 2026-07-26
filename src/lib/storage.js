@@ -1,11 +1,11 @@
-// 보고서 저장소. 로그인 없이 회사 단위로 누적한다.
+// 보고서 저장소. 로그인한 사용자만 쓰고, DB(Firestore) 가 유일한 저장소다.
 //
 //   companies/{companyKey}                                누적 요약 (연도별 값 · 최신 감사의견)
 //   companies/{companyKey}/reports/{reportId}              보고서별 분석 결과
 //   companies/{companyKey}/reports/{reportId}/content/*    원문 · 표 · 주석 청크
 //
 // reportId 는 연도·기간종류·연결여부로 결정되므로 같은 보고서를 다시 올리면
-// 새 문서가 생기지 않고 갱신된다. Firestore 를 쓸 수 없으면 IndexedDB 로 폴백한다.
+// 새 문서가 생기지 않고 갱신된다.
 
 import { db, auth, isFirebaseConfigured } from '../firebase.js'
 import {
@@ -114,13 +114,13 @@ export const usesFirestore = Boolean(isFirebaseConfigured && db)
  */
 export function backendLabel(state) {
   if (!usesFirestore) {
-    return { mode: 'local', label: '브라우저 저장', hint: 'Firebase 설정이 없어 이 브라우저에만 저장합니다.' }
+    return { mode: 'local', label: 'DB 설정 없음', hint: 'Firebase 설정이 없어 저장할 수 없습니다. .env 의 VITE_FIREBASE_* 를 확인해 주세요.' }
   }
   if (state === 'blocked') {
     return {
       mode: 'blocked',
       label: 'DB 저장 차단됨',
-      hint: 'Firestore 보안 규칙이 접근을 막고 있어 이 브라우저에만 저장됩니다. `firebase deploy --only firestore:rules` 로 규칙을 배포해 주세요.',
+      hint: 'Firestore 보안 규칙이 접근을 막고 있습니다. `firebase deploy --only firestore:rules` 로 규칙을 배포해 주세요.',
     }
   }
   if (state === 'db') {
@@ -133,10 +133,10 @@ export function backendLabel(state) {
 function firestoreHint(e) {
   const code = e?.code || ''
   if (code === 'permission-denied') {
-    return 'Firestore 보안 규칙이 접근을 막고 있습니다. `firebase deploy --only firestore:rules` 로 규칙을 배포해 주세요. 지금은 브라우저에만 저장했습니다.'
+    return '권한이 없습니다. 로그인 상태를 확인하고, 규칙이 배포됐는지 확인해 주세요 (`firebase deploy --only firestore:rules`).'
   }
-  if (code === 'unavailable') return 'Firestore 에 연결할 수 없어 브라우저에만 저장했습니다.'
-  return `Firestore 저장 실패 (${code || e?.message || '원인 불명'}) — 브라우저에만 저장했습니다.`
+  if (code === 'unavailable') return 'Firestore 에 연결할 수 없습니다. 네트워크를 확인해 주세요.'
+  return `DB 작업 실패 (${code || e?.message || '원인 불명'})`
 }
 
 function keysOf(report) {
@@ -147,29 +147,28 @@ function keysOf(report) {
 }
 
 // ── 공개 API ──────────────────────────────────────────────────
-/** @returns {{report:object, companyKey:string, storage:'firestore'|'local', warning:string|null}} */
+/**
+ * 보고서 저장. DB 가 유일한 저장소다.
+ *
+ * 예전에는 Firestore 가 막히면 IndexedDB 로 떨어뜨렸는데, 그 사본이 목록에 섞여
+ * DB 에서 지운 회사가 계속 살아 있는 것처럼 보이는 문제를 만들었다.
+ * 로그인을 붙인 뒤로는 폴백할 이유가 없어 실패를 그대로 올린다.
+ *
+ * @returns {{report:object, companyKey:string, storage:'firestore', warning:null}}
+ */
 export async function saveReport(report) {
   const { companyKey, reportId } = keysOf(report)
   const withKeys = { ...report, companyKey, id: reportId }
 
-  if (usesFirestore) {
-    try {
-      await saveToFirestore(withKeys, companyKey, reportId)
-      await saveToLocal(withKeys, companyKey, reportId).catch(() => {})
-      return { report: { ...withKeys, storage: 'firestore' }, companyKey, storage: 'firestore', warning: null }
-    } catch (e) {
-      await saveToLocal(withKeys, companyKey, reportId)
-      return {
-        report: { ...withKeys, storage: 'local' },
-        companyKey,
-        storage: 'local',
-        warning: firestoreHint(e),
-        dbState: e?.code === 'permission-denied' ? 'blocked' : 'local',
-      }
-    }
+  if (!usesFirestore) {
+    throw new Error('Firebase 설정이 없어 저장할 수 없습니다. .env 의 VITE_FIREBASE_* 값을 확인해 주세요.')
   }
-  await saveToLocal(withKeys, companyKey, reportId)
-  return { report: { ...withKeys, storage: 'local' }, companyKey, storage: 'local', warning: null }
+  try {
+    await saveToFirestore(withKeys, companyKey, reportId)
+  } catch (e) {
+    throw new Error(firestoreHint(e))
+  }
+  return { report: { ...withKeys, storage: 'firestore' }, companyKey, storage: 'firestore', warning: null }
 }
 
 /**
@@ -206,14 +205,7 @@ export async function listCompanies() {
       dbState = e?.code === 'permission-denied' ? 'blocked' : 'local'
     }
   }
-  const local = await listLocalCompanies()
-  const byKey = new Map()
-  for (const c of [...cloud, ...local]) {
-    const prev = byKey.get(c.key)
-    if (!prev || (c.updatedAt || 0) > (prev.updatedAt || 0)) byKey.set(c.key, c)
-  }
-  const merged = [...byKey.values()]
-  const companies = merged
+  const companies = cloud
     .map((c) => companyView(c))
     .sort((a, b) => (b.uploadedAt || 0) - (a.uploadedAt || 0))
   return { companies, warning, dbState }
@@ -231,15 +223,7 @@ export async function loadCompanyReports(companyKey) {
       warning = firestoreHint(e)
     }
   }
-  const local = await listLocalReports(companyKey)
-  // 같은 보고서가 양쪽에 있으면 더 나중에 저장된 쪽을 쓴다.
-  // (클라우드 쓰기가 막혀 로컬에만 최신본이 남는 경우가 있다)
-  const merged = new Map()
-  for (const r of [...cloud, ...local]) {
-    const prev = merged.get(r.id)
-    if (!prev || (r.storedAt || 0) > (prev.storedAt || 0)) merged.set(r.id, r)
-  }
-  const reports = [...merged.values()].sort(
+  const reports = cloud.sort(
     (a, b) =>
       (b.meta?.fiscalYear || 0) - (a.meta?.fiscalYear || 0) ||
       (PERIOD_RANK[b.meta?.periodType] ?? 0) - (PERIOD_RANK[a.meta?.periodType] ?? 0) ||
@@ -251,15 +235,8 @@ export async function loadCompanyReports(companyKey) {
 const PERIOD_RANK = { FY: 4, Q3: 3, H1: 2, Q1: 1 }
 
 export async function loadContent(companyKey, reportId) {
-  if (usesFirestore) {
-    try {
-      const fromCloud = await loadContentFromFirestore(companyKey, reportId)
-      if (fromCloud) return fromCloud
-    } catch {
-      // 규칙·네트워크 문제면 로컬 사본으로 대체한다.
-    }
-  }
-  return loadContentFromLocal(companyKey, reportId)
+  if (!usesFirestore) return null
+  return loadContentFromFirestore(companyKey, reportId)
 }
 
 /**
@@ -300,7 +277,6 @@ export async function deleteCompany(companyKey) {
     }
   }
 
-  await deleteLocalCompany(companyKey).catch(() => {})
   return { deleted, warning }
 }
 
@@ -322,14 +298,6 @@ async function commitAll(refs) {
   }
 }
 
-async function deleteLocalCompany(ck) {
-  const reports = await listLocalReports(ck)
-  await tx('companies', 'readwrite', (s) => s.delete(ck)).catch(() => {})
-  for (const r of reports) {
-    await tx('reports', 'readwrite', (s) => s.delete(localId(ck, r.id))).catch(() => {})
-    await tx('contents', 'readwrite', (s) => s.delete(localId(ck, r.id))).catch(() => {})
-  }
-}
 
 // ── Firestore ────────────────────────────────────────────────
 const companyDoc = (ck) => doc(db, COL, ck)
@@ -382,96 +350,15 @@ async function loadContentFromFirestore(ck, rid) {
   return reassemble(snap.docs.map((d) => d.data()))
 }
 
-// ── IndexedDB (폴백) ─────────────────────────────────────────
-const DB_NAME = 'dart-audit-analyzer'
-// v3: 누적 키에 연결/별도를 포함하도록 바뀌어, 옛 키가 섞인 회사 문서를 버린다.
-const DB_VERSION = 3
-let dbp = null
+// ── 옛 로컬 사본 정리 ────────────────────────────────────────
+// 예전에는 Firestore 가 막히면 IndexedDB 로 떨어뜨렸다. 그 사본이 목록에 섞여
+// DB 에서 지운 회사가 살아 있는 것처럼 보였다. 이제 쓰지 않으므로 한 번 지운다.
+const LEGACY_DB = 'dart-audit-analyzer'
 
-function idb() {
-  if (dbp) return dbp
-  dbp = new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION)
-    req.onupgradeneeded = () => {
-      const d = req.result
-      // 구버전 스토어는 버리고 다시 만든다(원본 파일을 다시 올리면 복구된다).
-      for (const name of ['summaries', 'contents', 'companies', 'reports']) {
-        if (d.objectStoreNames.contains(name)) d.deleteObjectStore(name)
-      }
-      d.createObjectStore('companies', { keyPath: 'key' })
-      const reports = d.createObjectStore('reports', { keyPath: 'localId' })
-      reports.createIndex('companyKey', 'companyKey', { unique: false })
-      d.createObjectStore('contents', { keyPath: 'localId' })
-    }
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
-  })
-  return dbp
-}
-
-function tx(store, mode, fn) {
-  return idb().then(
-    (d) =>
-      new Promise((resolve, reject) => {
-        const t = d.transaction(store, mode)
-        const s = t.objectStore(store)
-        let result
-        try {
-          result = fn(s)
-        } catch (e) {
-          reject(e)
-          return
-        }
-        t.oncomplete = () => resolve(result?.result !== undefined ? result.result : result)
-        t.onerror = () => reject(t.error)
-        t.onabort = () => reject(t.error)
-      })
-  )
-}
-
-const localId = (ck, rid) => `${ck}::${rid}`
-
-async function saveToLocal(report, ck, rid) {
-  const prev = await tx('companies', 'readonly', (s) => s.get(ck)).catch(() => null)
-  const next = accumulateCompany(prev || null, report, uploader())
-  await tx('companies', 'readwrite', (s) => s.put({ ...next, storage: 'local' }))
-  await tx('reports', 'readwrite', (s) =>
-    s.put({ ...toSummary(report), localId: localId(ck, rid), id: rid, companyKey: ck, storage: 'local', storedAt: Date.now() })
-  )
-  await tx('contents', 'readwrite', (s) =>
-    s.put({
-      localId: localId(ck, rid),
-      rawText: report.rawText || '',
-      blocks: report.blocks || [],
-      notes: report.notes || { items: [] },
-      sections: report.sections || [],
-    })
-  )
-}
-
-async function listLocalCompanies() {
+export function dropLegacyLocalStore() {
   try {
-    return (await tx('companies', 'readonly', (s) => s.getAll())) || []
+    indexedDB?.deleteDatabase(LEGACY_DB)
   } catch {
-    return []
-  }
-}
-
-async function listLocalReports(ck) {
-  try {
-    const all = (await tx('reports', 'readonly', (s) => s.getAll())) || []
-    return all.filter((r) => r.companyKey === ck)
-  } catch {
-    return []
-  }
-}
-
-async function loadContentFromLocal(ck, rid) {
-  try {
-    const rec = await tx('contents', 'readonly', (s) => s.get(localId(ck, rid)))
-    if (!rec) return null
-    return { rawText: rec.rawText, blocks: rec.blocks, notes: rec.notes, sections: rec.sections }
-  } catch {
-    return null
+    /* 지우지 못해도 읽는 곳이 없으니 문제되지 않는다 */
   }
 }

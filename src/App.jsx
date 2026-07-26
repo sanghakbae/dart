@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { analyzeFile } from './lib/parse'
 import {
   saveReport, listCompanies, loadCompanyReports, loadContent, backendLabel,
-  deleteCompany, setCompanyShared,
+  deleteCompany, setCompanyShared, dropLegacyLocalStore,
 } from './lib/storage'
 import { buildTimeline, splitByPeriodType } from './lib/analyze/series'
 import { useAuth, signOut, authAvailable } from './lib/auth'
@@ -22,6 +22,7 @@ import TrendTab from './components/tabs/TrendTab'
 import RatioTab from './components/tabs/RatioTab'
 import ValuationTab from './components/tabs/ValuationTab'
 import ChecklistTab from './components/tabs/ChecklistTab'
+import EmploymentTab from './components/tabs/EmploymentTab'
 import NotesTab from './components/tabs/NotesTab'
 import RawTab from './components/tabs/RawTab'
 import { fileSize } from './lib/format'
@@ -33,6 +34,7 @@ const TABS = [
   { key: 'trend', label: '추이' },
   { key: 'ratio', label: '재무비율' },
   { key: 'valuation', label: '기업가치' },
+  { key: 'employment', label: '고용' },
   { key: 'checklist', label: '점검' },
   { key: 'notes', label: '주석' },
   { key: 'raw', label: '원문' },
@@ -106,6 +108,12 @@ export default function App() {
   useEffect(() => {
     if (user) touchUser(user)
   }, [user])
+
+  // 옛 IndexedDB 사본 정리. 이제 DB만 쓰는데 그 사본이 목록에 섞여
+  // 지운 회사가 살아 있는 것처럼 보이던 문제가 있었다.
+  useEffect(() => {
+    dropLegacyLocalStore()
+  }, [])
 
   // 관리자가 아니게 되면 관리자 화면에 머물지 않는다.
   useEffect(() => {
@@ -449,6 +457,7 @@ export default function App() {
                   )}
                   {tab === 'ratio' && <RatioTab report={mergedActive} timeline={timeline} />}
                   {tab === 'valuation' && <ValuationTab report={mergedActive} timeline={timeline} />}
+                  {tab === 'employment' && <EmploymentTab report={mergedActive} timeline={timeline} />}
                   {tab === 'checklist' && (
                     <ChecklistTab report={mergedActive} timeline={timeline} notes={activeContent?.notes} loading={contentLoading} />
                   )}

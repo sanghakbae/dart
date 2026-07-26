@@ -4,24 +4,33 @@
 // (VITE_ 접두사를 쓰지 않는 이유 — 그걸 붙이면 번들에 박힌다)
 
 import { handleDart } from './dart-handler.mjs'
+import { handleNps } from './nps-handler.mjs'
 
 export function dartProxy(env = {}) {
-  const key = env.DART_API_KEY || process.env.DART_API_KEY || ''
+  const dartKey = env.DART_API_KEY || process.env.DART_API_KEY || ''
+  const npsKey = env.NPS_API_KEY || process.env.NPS_API_KEY || ''
 
   return {
     name: 'dart-proxy',
     configureServer(server) {
-      if (!key) {
+      if (!dartKey) {
         server.config.logger.warn(
           '[dart-proxy] DART_API_KEY 가 없습니다. .env 에 넣어야 DART 가져오기가 동작합니다.'
         )
       }
+      if (!npsKey) {
+        server.config.logger.warn(
+          '[dart-proxy] NPS_API_KEY 가 없습니다. .env 에 넣어야 고용 정보가 동작합니다.'
+        )
+      }
       server.middlewares.use(async (req, res, next) => {
-        if (!req.url?.startsWith('/api/dart/')) return next()
+        if (!req.url?.startsWith('/api/dart/') && !req.url?.startsWith('/api/nps/')) return next()
         try {
           const url = `http://localhost${req.url}`
           const request = new Request(url, { method: req.method, headers: toHeaders(req.headers) })
-          const response = await handleDart(request, key)
+          const response = req.url.startsWith('/api/nps/')
+            ? await handleNps(request, npsKey)
+            : await handleDart(request, dartKey)
           if (!response) return next()
           res.statusCode = response.status
           response.headers.forEach((v, k) => res.setHeader(k, v))
