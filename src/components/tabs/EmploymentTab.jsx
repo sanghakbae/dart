@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Card, Tile, Empty, Callout, Badge } from '../ui'
 import { fetchEmployment, yearlyAverages, turnoverRate } from '../../lib/nps/api'
+import { hasProxy } from '../../lib/proxyBase.js'
 import { abbrev, full } from '../../lib/format'
 import { HeadcountChart } from '../charts'
 
@@ -66,7 +67,9 @@ export default function EmploymentTab({ report, timeline }) {
         <Callout tone="warn">
           {error}
           <br />
-          국민연금 조회는 개발 서버의 프록시를 씁니다. 배포본에서는 아직 동작하지 않습니다.
+          {hasProxy
+            ? '국민연금 인증키(NPS_API_KEY)가 프록시에 설정되어 있어야 합니다. 개발 서버는 .env, 배포본은 Worker 시크릿에서 읽습니다.'
+            : '배포본에는 조회용 프록시 주소가 설정되지 않았습니다. VITE_PROXY_BASE 에 Worker 주소를 넣어 배포하면 동작합니다.'}
         </Callout>
       </Card>
     )

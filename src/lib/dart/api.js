@@ -4,6 +4,8 @@
 // 기업 검색만 클라이언트에서 한다 — 12만 건짜리 색인을 한 번 받아 두고 메모리에서 찾는다
 // (public/dart-corp-index.txt, 빌드 시 scripts/build-corp-index.mjs 가 굽는다).
 
+import { proxyUrl } from '../proxyBase.js'
+
 const INDEX_URL = `${import.meta.env.BASE_URL}dart-corp-index.txt`
 
 let indexPromise = null
@@ -65,12 +67,12 @@ async function getJson(path) {
 
 /** 감사보고서·정기보고서 공시 목록 */
 export function fetchFilings(corpCode) {
-  return getJson(`/api/dart/filings?corp=${encodeURIComponent(corpCode)}`)
+  return getJson(proxyUrl(`/api/dart/filings?corp=${encodeURIComponent(corpCode)}`))
 }
 
 /** 기업개황 — 사업자등록번호·법인등록번호가 여기서만 나온다(감사보고서 본문에는 없다) */
 export function fetchCompany(corpCode) {
-  return getJson(`/api/dart/company?corp=${encodeURIComponent(corpCode)}`)
+  return getJson(proxyUrl(`/api/dart/company?corp=${encodeURIComponent(corpCode)}`))
 }
 
 /**
@@ -78,7 +80,7 @@ export function fetchCompany(corpCode) {
  * 기존 업로드 파이프라인(analyzeFile)에 그대로 넣기 위해 File 로 감싼다.
  */
 export async function fetchDocumentFile(rceptNo, fileName) {
-  const res = await fetch(`/api/dart/document?rcept=${encodeURIComponent(rceptNo)}`)
+  const res = await fetch(proxyUrl(`/api/dart/document?rcept=${encodeURIComponent(rceptNo)}`))
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
     throw new Error(body?.error || `원문을 받지 못했습니다 (${res.status})`)

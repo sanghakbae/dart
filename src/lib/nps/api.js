@@ -1,7 +1,10 @@
 // 국민연금 고용 정보 클라이언트. 인증키는 프록시(/api/nps/*)에만 있다.
+// 배포본에서는 같은 오리진에 서버가 없어 Worker 주소로 붙는다(lib/proxyBase.js).
+
+import { proxyUrl } from '../proxyBase.js'
 
 async function getJson(path) {
-  const res = await fetch(path)
+  const res = await fetch(proxyUrl(path))
   const body = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(body?.error || `요청 실패 (${res.status})`)
   return body

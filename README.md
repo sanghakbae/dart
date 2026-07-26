@@ -80,8 +80,19 @@ Firebase 프로젝트 **`dart-40a5c`**. 웹 config 는 클라이언트 번들에
 `src/firebase.js` 에 기본값으로 내장했고, 다른 프로젝트를 쓸 때만 `.env` 로 덮어쓴다.
 
 ```bash
-cp .env.example .env   # 다른 Firebase 프로젝트를 쓸 때만
+cp .env.example .env
 ```
+
+`.env` 에 넣는 값:
+
+| 변수 | 용도 | 없으면 |
+|---|---|---|
+| `DART_API_KEY` | DART 원문 직접 가져오기 ([opendart.fss.or.kr](https://opendart.fss.or.kr)) | 가져오기 비활성 |
+| `NPS_API_KEY` | 국민연금 고용 정보 ([data.go.kr](https://www.data.go.kr)) | 고용 탭 비활성 |
+| `VITE_FIREBASE_*` | 다른 Firebase 프로젝트를 쓸 때만 | `dart-40a5c` 기본값 |
+| `VITE_PROXY_BASE` | 배포본이 가리킬 Worker 주소 | 개발 서버는 같은 오리진 사용 |
+
+`DART_API_KEY`·`NPS_API_KEY` 는 `VITE_` 접두사가 없어 클라이언트 번들에 들어가지 않는다.
 
 **로그인(OAuth)은 쓰지 않는다.** 업로드하면 곧바로 회사 단위로 누적된다:
 
@@ -121,6 +132,37 @@ npm test
 
 `tests/fixtures/hanbit-2024.txt` (가상 회사 감사보고서)로 금액 정규화, 표지 메타, 감사의견 판정,
 표 복원, 단위 환산, 주석 분리, 비율 계산, 다년 추이 병합을 검증한다.
+
+## DART · 국민연금 조회 (프록시)
+
+인증키를 브라우저에 내려보내지 않기 위해 조회는 프록시를 거친다. 핸들러는
+`server/dart-handler.mjs`·`server/nps-handler.mjs` 하나뿐이고, 개발 서버와 배포본이 같은 코드를 쓴다.
+
+| 환경 | 처리 주체 | 키 위치 |
+|---|---|---|
+| 개발 (`npm run dev`) | Vite 플러그인 `server/vite-dart-plugin.mjs` | `.env` 의 `DART_API_KEY` · `NPS_API_KEY` |
+| 배포 (GitHub Pages) | Cloudflare Worker `server/worker.mjs` | Worker 시크릿 |
+
+GitHub Pages 는 정적 호스팅이라 `/api/*` 를 처리할 수 없다. 그래서 배포본은 Worker 를 가리킨다.
+
+```bash
+# 1) 키를 Worker 시크릿에 넣는다 (값은 프롬프트로 입력 — 명령줄에 남기지 않는다)
+npx wrangler secret put DART_API_KEY
+npx wrangler secret put NPS_API_KEY
+
+# 2) 배포
+npx wrangler deploy          # → https://dart-proxy.<계정>.workers.dev
+```
+
+그 다음 GitHub 저장소에 Worker 주소를 넣는다:
+Settings → Secrets and variables → Actions → **Variables** → `PROXY_BASE`
+(예: `https://dart-proxy.<계정>.workers.dev`). 값이 없으면 배포본에서 조회 기능만 비활성이고
+업로드·분석은 그대로 동작한다.
+
+공개 URL 이므로 Worker 는 **허용 오리진을 제한한다**(`server/worker.mjs` 의 `ALLOWED`:
+`dart.sanghak.kr`, localhost). 열어두면 아무 사이트나 이 프록시로 우리 인증키 할당량을 소모할 수 있다.
+미리보기 도메인 등을 더 허용해야 하면 `wrangler.jsonc` 의 `ALLOWED_ORIGINS` 에 쉼표로 구분해 넣는다.
+`/health` 로 키 설정 여부를 확인할 수 있다.
 
 ## 배포
 
