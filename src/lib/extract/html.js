@@ -67,20 +67,24 @@ function expandTable(table) {
     .filter((r) => r.some((v) => v))
 }
 
-function readAsText(file) {
-  return new Promise((resolve, reject) => {
-    const fr = new FileReader()
-    fr.onerror = () => reject(fr.error)
-    fr.onload = () => resolve(String(fr.result || ''))
-    // DART 원문은 EUC-KR 인 경우가 많다. UTF-8 로 읽어 깨지면 EUC-KR 로 재시도한다.
-    fr.readAsText(file, 'utf-8')
-  }).then(async (text) => {
-    if (!/[�]/.test(text)) return text
-    const buf = await file.arrayBuffer()
+/**
+ * DART 원문은 UTF-8 과 EUC-KR 이 섞여 있다.
+ *
+ * XML 선언의 encoding 은 믿을 수 없다 — 실제로는 UTF-8 인데 euc-kr 로 선언된 옛
+ * 문서가 있고, 그대로 따르면 한글이 전부 "占쏙옙" 로 깨진다. 이건 '�' 검사로도 안 잡힌다
+ * (깨진 결과가 전부 유효한 한글 코드포인트라서). 그래서 선언을 보지 않고 바이트로 판별한다.
+ *
+ * EUC-KR 바이트열은 UTF-8 로 엄격 디코딩하면 거의 반드시 실패한다. 그 성질을 쓴다.
+ */
+async function readAsText(file) {
+  const buf = await file.arrayBuffer()
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(buf)
+  } catch {
     try {
       return new TextDecoder('euc-kr').decode(buf)
     } catch {
-      return text
+      return new TextDecoder('utf-8').decode(buf)
     }
-  })
+  }
 }

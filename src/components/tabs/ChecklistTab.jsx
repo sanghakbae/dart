@@ -19,41 +19,67 @@ export default function ChecklistTab({ report, timeline, notes, loading }) {
   }
 
   const shown = (items) => (filter === 'all' ? items : items.filter((i) => i.status === filter))
+  const visibleCount = filter === 'all' ? result.checked : result.counts[filter] || 0
+
+  // 상태 배지가 곧 필터다. 같은 것을 다시 누르면 전체로 돌아간다.
+  const chip = (status, tone, label, dot) => {
+    const n = result.counts[status] || 0
+    const active = filter === status
+    return (
+      <button
+        type="button"
+        className={`badge badge-${tone} chip-filter${active ? ' active' : ''}`}
+        onClick={() => setFilter(active ? 'all' : status)}
+        disabled={n === 0 && !active}
+        aria-pressed={active}
+        title={n === 0 ? `${label} 항목이 없습니다` : `${label}만 보기`}
+      >
+        {dot && <i className="dot" />}
+        {label} {n}
+      </button>
+    )
+  }
 
   return (
     <div className="stack-lg">
       <Card
         title="점검 결과"
-        sub={`${result.checked}개 항목`}
+        sub={filter === 'all' ? `${result.checked}개 항목` : `${visibleCount}개 항목 · 필터 적용 중`}
         right={
           <Seg
             ariaLabel="점검 결과 필터"
             value={filter}
             onChange={setFilter}
-            options={[
-              { value: 'all', label: `전체 ${result.checked}` },
-              { value: 'bad', label: `위험 ${result.counts.bad || 0}` },
-              { value: 'warn', label: `확인 ${result.counts.warn || 0}` },
-            ]}
+            options={[{ value: 'all', label: `전체 ${result.checked}` }]}
           />
         }
       >
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <Badge tone="critical" dot>위험 신호 {result.counts.bad || 0}</Badge>
-          <Badge tone="warn" dot>확인 필요 {result.counts.warn || 0}</Badge>
-          <Badge tone="good" dot>양호 {result.counts.good || 0}</Badge>
-          <Badge tone="info">참고 {result.counts.info || 0}</Badge>
-          <Badge tone="muted">판정 불가 {result.counts.unknown || 0}</Badge>
+        <div className="stack">
+          <div className="chip-filters">
+            {chip('bad', 'critical', '위험 신호', true)}
+            {chip('warn', 'warn', '확인 필요', true)}
+            {chip('good', 'good', '양호', true)}
+            {chip('info', 'info', '참고', false)}
+            {chip('unknown', 'muted', '판정 불가', false)}
+          </div>
+          <Callout tone="warn">
+            <span>
+              판정 기준은 업종을 가리지 않는 일반값이라 <strong>신호일 뿐 결론이 아닙니다.</strong>{' '}
+              건설·금융·바이오처럼 재무구조가 특수한 업종은 기준 자체가 다릅니다. 각 항목의 근거 수치와
+              주석 원문을 함께 확인하세요.
+              {loading && ' (주석 본문을 아직 불러오는 중이라 일부 항목은 판정이 바뀔 수 있습니다.)'}
+            </span>
+          </Callout>
         </div>
-        <Callout tone="warn">
-          <span>
-            판정 기준은 업종을 가리지 않는 일반값이라 <strong>신호일 뿐 결론이 아닙니다.</strong>
-            건설·금융·바이오처럼 재무구조가 특수한 업종은 기준 자체가 다릅니다. 각 항목의 근거 수치와
-            주석 원문을 함께 확인하세요.
-            {loading && ' (주석 본문을 아직 불러오는 중이라 일부 항목은 판정이 바뀔 수 있습니다.)'}
-          </span>
-        </Callout>
       </Card>
+
+      {visibleCount === 0 && (
+        <Card>
+          <Empty title={`${TONE[filter]?.label || ''} 항목이 없습니다`}>
+            위 배지를 다시 눌러 전체 목록으로 돌아갈 수 있습니다.
+          </Empty>
+        </Card>
+      )}
 
       {result.groups.map((g) => {
         const items = shown(g.items)

@@ -1,10 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { analyzeFile } from './lib/parse'
-import { saveReport, listCompanies, loadCompanyReports, loadContent, backendLabel } from './lib/storage'
+import {
+  saveReport, listCompanies, loadCompanyReports, loadContent, backendLabel,
+  deleteCompany, setCompanyShared,
+} from './lib/storage'
 import { buildTimeline, splitByPeriodType } from './lib/analyze/series'
+import { useAuth, signOut, authAvailable } from './lib/auth'
+import { touchUser, bumpUpload } from './lib/usage'
 import Header from './components/Header'
+import SignIn from './components/SignIn'
+import AdminPage from './components/AdminPage'
 import UploadZone from './components/UploadZone'
 import CompanyList from './components/CompanyList'
+import ConfirmDelete from './components/ConfirmDelete'
+import DartImport from './components/DartImport'
 import { Card, Badge, Empty, Callout } from './components/ui'
 import SummaryTab from './components/tabs/SummaryTab'
 import OpinionTab from './components/tabs/OpinionTab'
@@ -47,6 +56,12 @@ export default function App() {
   const [theme, setTheme] = useState(() => localStorage.getItem('dart-theme') || 'auto')
   const contentReq = useRef(0)
 
+  const { user, ready: authReady, admin } = useAuth()
+  const [adminView, setAdminView] = useState(false)
+  const [deletingKey, setDeletingKey] = useState(null)
+  const [pendingDelete, setPendingDelete] = useState(null)
+  const [sharingKey, setSharingKey] = useState(null)
+
   const [dbState, setDbState] = useState('checking')
   const storage = backendLabel(dbState)
 
@@ -76,9 +91,26 @@ export default function App() {
     }
   }, [toast])
 
+  // 로그인 전에는 목록을 부르지 않는다(규칙이 막아 permission-denied 만 뜬다).
   useEffect(() => {
+    if (!authReady) return
+    if (authAvailable && !user) {
+      setCompanies([])
+      setLoadingList(false)
+      return
+    }
     refreshCompanies()
-  }, [refreshCompanies])
+  }, [authReady, user, refreshCompanies])
+
+  // 로그인 기록 — 관리자 페이지의 이용 현황이 이걸로 만들어진다.
+  useEffect(() => {
+    if (user) touchUser(user)
+  }, [user])
+
+  // 관리자가 아니게 되면 관리자 화면에 머물지 않는다.
+  useEffect(() => {
+    if (!admin) setAdminView(false)
+  }, [admin])
 
   const company = useMemo(() => companies.find((c) => c.key === companyKey) || null, [companies, companyKey])
 
@@ -142,6 +174,7 @@ export default function App() {
           setPhase(`${file.name} DB에 누적 중`)
           const { report: saved, companyKey: ck, storage: where, warning, dbState: state } = await saveReport(report)
           if (state) setDbState(state)
+          bumpUpload()
 
           setContent((prev) => ({
             ...prev,
@@ -184,6 +217,54 @@ export default function App() {
       toast(e.message, 'bad')
     }
   }, [handleFiles, toast])
+
+  // 확인 모달로 넘긴다. window.prompt 는 임베드 브라우저에서 차단돼 조용히 실패한다.
+  const handleDelete = useCallback((c) => setPendingDelete(c), [])
+
+  const confirmDelete = useCallback(async () => {
+    const c = pendingDelete
+    if (!c) return
+    setDeletingKey(c.key)
+    try {
+      const { deleted, warning } = await deleteCompany(c.key)
+      if (warning) {
+        toast(warning, 'bad')
+      } else {
+        toast(`${c.name} 삭제 완료 — 보고서 ${deleted.reports}건, 본문 ${deleted.chunks}조각`)
+        setPendingDelete(null)
+      }
+      if (companyKey === c.key) {
+        setCompanyKey(null)
+        setActiveId(null)
+      }
+      await refreshCompanies()
+    } catch (e) {
+      toast(`삭제하지 못했습니다: ${e.message}`, 'bad')
+    } finally {
+      setDeletingKey(null)
+    }
+  }, [pendingDelete, companyKey, refreshCompanies, toast])
+
+  const handleShare = useCallback(
+    async (c, next) => {
+      setSharingKey(c.key)
+      try {
+        await setCompanyShared(c.key, next)
+        toast(`${c.name} — ${next ? '모든 계정에 공개' : '비공개로 전환'}했습니다.`)
+        await refreshCompanies()
+      } catch (e) {
+        toast(
+          e?.code === 'permission-denied'
+            ? '공통 노출은 관리자만 지정할 수 있습니다. firestore.rules 가 배포됐는지 확인해 주세요.'
+            : `변경하지 못했습니다: ${e.message}`,
+          'bad'
+        )
+      } finally {
+        setSharingKey(null)
+      }
+    },
+    [refreshCompanies, toast]
+  )
 
   const selectCompany = useCallback((c) => {
     setCompanyKey(c.key)
@@ -238,10 +319,26 @@ export default function App() {
         storage={storage}
         theme={theme === 'auto' ? (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme}
         onTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+        user={user}
+        admin={admin}
+        adminView={adminView}
+        onAdmin={() => setAdminView((v) => !v)}
+        onSignOut={signOut}
       />
 
       <main className="wrap stack-lg" style={{ paddingTop: 20 }}>
-        {!companyKey ? (
+        {!authReady ? (
+          <Card><Empty title="로그인 상태를 확인하는 중입니다…" /></Card>
+        ) : authAvailable && !user ? (
+          <SignIn configured={authAvailable} />
+        ) : adminView ? (
+          <AdminPage
+            companies={companies}
+            onBack={() => setAdminView(false)}
+            onShare={handleShare}
+            sharingKey={sharingKey}
+          />
+        ) : !companyKey ? (
           <>
             <UploadZone
               onFiles={handleFiles}
@@ -251,6 +348,10 @@ export default function App() {
               phase={phase}
               compact={companies.length > 0}
             />
+
+            <Card title="DART 에서 가져오기" sub="회사명으로 찾아 공시 원문을 바로 받습니다">
+              <DartImport onFiles={handleFiles} busy={busy} />
+            </Card>
 
             {dbState === 'blocked' && (
               <Callout tone="warn">
@@ -266,7 +367,13 @@ export default function App() {
             {loadingList ? (
               <Card><Empty title="DB에서 회사 목록을 불러오는 중입니다…" /></Card>
             ) : (
-              <CompanyList companies={companies} activeKey={companyKey} onSelect={selectCompany} />
+              <CompanyList
+                companies={companies}
+                activeKey={companyKey}
+                onSelect={selectCompany}
+                onDelete={handleDelete}
+                deletingKey={deletingKey}
+              />
             )}
           </>
         ) : (
@@ -275,10 +382,10 @@ export default function App() {
               <button className="btn btn-sm btn-ghost" type="button" onClick={closeCompany}>
                 ‹ 회사 목록
               </button>
-              <strong style={{ fontSize: 17 }}>{company?.name || companyKey}</strong>
+              <strong style={{ fontSize: 18 }}>{company?.name || companyKey}</strong>
               {active?.opinion && <Badge tone={active.opinion.tone} dot>{active.opinion.label}</Badge>}
               {active && (
-                <span style={{ color: 'var(--text-3)', fontSize: 13 }}>
+                <span style={{ color: 'var(--text-3)', fontSize: 14 }}>
                   {active.meta?.basis} · {active.meta?.docKind} · {active.meta?.fileName} ({fileSize(active.meta?.fileSize)})
                 </span>
               )}
@@ -359,6 +466,13 @@ export default function App() {
           </>
         )}
       </main>
+
+      <ConfirmDelete
+        company={pendingDelete}
+        busy={deletingKey === pendingDelete?.key}
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={confirmDelete}
+      />
 
       <div className="toast-host">
         {toasts.map((t) => (

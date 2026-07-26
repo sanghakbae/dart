@@ -8,7 +8,7 @@ import { dateTimeText, abbrev, signedPct } from '../lib/format'
  * 회사 리스트. 항목은 회사 누적 문서(companies/{key})에서 만든 뷰다.
  * 업로드할 때마다 그 회사 문서에 연도 기준으로 누적되므로 여기서는 결과만 보여준다.
  */
-export default function CompanyList({ companies, activeKey, onSelect }) {
+export default function CompanyList({ companies, activeKey, onSelect, onDelete, deletingKey }) {
   const [q, setQ] = useState('')
 
   const rows = useMemo(
@@ -66,7 +66,7 @@ export default function CompanyList({ companies, activeKey, onSelect }) {
     >
       <ul className="colist">
         {filtered.map((c) => (
-          <li key={c.key}>
+          <li key={c.key} className="corow-wrap">
             <button
               type="button"
               className={`corow${c.key === activeKey ? ' active' : ''}`}
@@ -116,6 +116,18 @@ export default function CompanyList({ companies, activeKey, onSelect }) {
               </span>
               <span className="co-go" aria-hidden="true">›</span>
             </button>
+            {onDelete && (
+              <button
+                type="button"
+                className="co-del"
+                onClick={() => onDelete(c)}
+                disabled={deletingKey === c.key}
+                title={`${c.name} 삭제`}
+                aria-label={`${c.name} 삭제`}
+              >
+                {deletingKey === c.key ? '삭제 중…' : '삭제'}
+              </button>
+            )}
           </li>
         ))}
         {!filtered.length && (

@@ -2,30 +2,72 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // 로그인을 두지 않는 구성이라 누구나 읽고 쓸 수 있다.
-    // 즉 이 사이트 방문자는 업로드된 모든 감사보고서를 열람할 수 있다.
-    // 비공개로 바꾸려면 Firebase Auth 를 붙이고 소유자 기준으로 조건을 걸어야 한다.
+    // 구글 로그인을 붙인 뒤로 익명 접근은 모두 막는다.
+    // 감사보고서 원문이 통째로 들어 있어 공개해 둘 수 없다.
+    //
+    //   로그인한 사용자 → 열람 · 업로드 · 삭제
+    //   관리자          → 위 + 이용 현황(users 컬렉션) 조회
     //
     // 구조: companies/{회사}/reports/{연도-기간-연결여부}/content/{청크}
-    match /companies/{companyKey} {
-      allow read: if true;
-      // 삭제 기능은 앱에서 제공하지 않는다. 잘못 올린 자료는 콘솔에서 지운다.
-      allow delete: if false;
-      // 형식이 맞는 문서만 받아 잡다한 쓰기를 걸러낸다(보안 경계는 아니다).
-      allow create, update: if request.resource.data.keys().hasAll(['key', 'periods'])
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // 관리자 목록. src/lib/auth.js 의 ADMIN_EMAILS 와 반드시 같이 고쳐야 한다.
+    // (저쪽은 메뉴를 숨길 뿐이고 실제 차단은 여기서 한다)
+    function isAdmin() {
+      return signedIn()
+        && request.auth.token.email_verified == true
+        && request.auth.token.email.lower() in ['totoriverce@tukorea.ac.kr'];
+    }
+
+    function schemaOk() {
+      return request.resource.data.keys().hasAll(['key', 'periods'])
         && request.resource.data.periods is map;
+    }
+
+    // 이용 현황. 본인 문서만 쓸 수 있고, 전체 목록은 관리자만 읽는다.
+    match /users/{uid} {
+      allow get: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow list: if isAdmin();
+      allow create, update: if signedIn() && request.auth.uid == uid;
+      allow delete: if isAdmin();
+    }
+
+    match /companies/{companyKey} {
+      // 내가 올린 것 + 관리자가 공통 노출로 지정한 것만 보인다.
+      // 목록 조회는 이 조건에 맞는 쿼리로만 성공한다(src/lib/storage.js listCompanies 참고).
+      allow read: if signedIn() && (
+        isAdmin()
+        || resource.data.get('shared', false) == true
+        || resource.data.get('ownerUid', '') == request.auth.uid
+      );
+
+      // 삭제는 로그인한 사용자 누구나 할 수 있다. 공유 저장소라 남이 올린 자료도
+      // 지울 수 있으므로 화면에서 한 번 더 확인을 받는다.
+      allow delete: if signedIn();
+
+      // 형식이 맞는 문서만 받아 잡다한 쓰기를 걸러낸다(보안 경계는 아니다).
+      allow create: if signedIn() && schemaOk();
+      // 공통 노출 지정은 관리자만. 일반 사용자의 누적 쓰기는 shared 를 건드릴 수 없다.
+      allow update: if signedIn() && schemaOk() && (
+        isAdmin()
+        || request.resource.data.get('shared', false) == resource.data.get('shared', false)
+      );
 
       match /reports/{reportId} {
-        allow read: if true;
-        allow delete: if false;
-        allow create, update: if request.resource.data.keys().hasAll(['meta', 'createdAt'])
+        allow read: if signedIn();
+        allow delete: if signedIn();
+        allow create, update: if signedIn()
+          && request.resource.data.keys().hasAll(['meta', 'createdAt'])
           && request.resource.data.meta is map;
 
         // 원문 · 표 · 주석 본문 청크
         match /content/{chunkId} {
-          allow read: if true;
-          allow create, update: if true;
-          allow delete: if true; // 같은 보고서를 다시 올릴 때 이전 청크를 교체해야 한다
+          allow read: if signedIn();
+          allow create, update: if signedIn();
+          allow delete: if signedIn(); // 같은 보고서를 다시 올릴 때 이전 청크를 교체해야 한다
         }
       }
     }

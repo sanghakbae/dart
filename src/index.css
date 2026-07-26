@@ -115,7 +115,7 @@ body {
   background: var(--surface-0);
   color: var(--text-1);
   font-family: var(--font);
-  font-size: 17px;
+  font-size: 18px;
   line-height: 1.6;
   -webkit-text-size-adjust: 100%;
   overflow-x: hidden;
@@ -159,8 +159,8 @@ button { font-family: inherit; font-size: inherit; cursor: pointer; }
   color: #fff; font-weight: 700; font-size: 15px;
 }
 .brand-text { min-width: 0; }
-.brand-text strong { display: block; font-size: 17px; letter-spacing: -0.02em; }
-.brand-text span { display: block; font-size: 12.5px; color: var(--text-3); }
+.brand-text strong { display: block; font-size: 18px; letter-spacing: -0.02em; }
+.brand-text span { display: block; font-size: 13.5px; color: var(--text-3); }
 
 main { padding-bottom: 64px; }
 .stack { display: grid; gap: 16px; }
@@ -179,8 +179,8 @@ main { padding-bottom: 64px; }
   padding: 14px clamp(12px, 2vw, 20px);
   border-bottom: 1px solid var(--border);
 }
-.card-head h3 { font-size: 17.5px; }
-.card-head .sub { font-size: 13.5px; color: var(--text-3); }
+.card-head h3 { font-size: 18.5px; }
+.card-head .sub { font-size: 14.5px; color: var(--text-3); }
 .card-head .spacer { margin-left: auto; }
 .card-body { padding: clamp(12px, 2vw, 20px); }
 .card-body.tight { padding: 0; }
@@ -203,7 +203,7 @@ main { padding-bottom: 64px; }
   gap: 3px;
   min-width: 0;
 }
-.tile .k { font-size: 13.5px; color: var(--text-3); display: flex; align-items: center; gap: 6px; }
+.tile .k { font-size: 14.5px; color: var(--text-3); display: flex; align-items: center; gap: 6px; }
 .tile .v {
   font-size: clamp(24px, 2.9vw, 31px);
   font-weight: 660;
@@ -211,8 +211,8 @@ main { padding-bottom: 64px; }
   line-height: 1.15;
   overflow-wrap: anywhere;
 }
-.tile .u { font-size: 13px; color: var(--text-3); font-variant-numeric: tabular-nums; }
-.tile .d { font-size: 13.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tile .u { font-size: 14px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.tile .d { font-size: 14.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .up { color: var(--good-text); }
 .down { color: var(--critical); }
 .flat { color: var(--text-3); }
@@ -222,7 +222,7 @@ main { padding-bottom: 64px; }
   display: inline-flex; align-items: center; gap: 5px;
   padding: 3px 9px;
   border-radius: 999px;
-  font-size: 13px; font-weight: 600;
+  font-size: 14px; font-weight: 600;
   border: 1px solid var(--border);
   background: var(--surface-2);
   color: var(--text-2);
@@ -244,7 +244,7 @@ main { padding-bottom: 64px; }
   border: 1px solid var(--border-strong);
   background: var(--surface-1);
   color: var(--text-1);
-  font-weight: 550; font-size: 15px;
+  font-weight: 550; font-size: 16px;
   transition: background 0.15s, border-color 0.15s;
 }
 .btn:hover { background: var(--surface-2); }
@@ -252,7 +252,7 @@ main { padding-bottom: 64px; }
 .btn-primary:hover { background: color-mix(in srgb, var(--series-1) 86%, #000); }
 .btn-ghost { border-color: transparent; background: transparent; color: var(--text-2); }
 .btn-ghost:hover { background: var(--surface-2); }
-.btn-sm { min-height: 36px; padding: 6px 13px; font-size: 14px; }
+.btn-sm { min-height: 36px; padding: 6px 13px; font-size: 15px; }
 .btn-danger { color: var(--critical); }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
@@ -267,10 +267,10 @@ main { padding-bottom: 64px; }
 }
 .drop.over { border-color: var(--series-1); background: color-mix(in srgb, var(--series-1) 6%, var(--surface-1)); }
 .drop h2 { font-size: clamp(17px, 2.6vw, 21px); margin-bottom: 6px; }
-.drop p { color: var(--text-2); font-size: 15.5px; max-width: 62ch; margin-inline: auto; }
+.drop p { color: var(--text-2); font-size: 16.5px; max-width: 62ch; margin-inline: auto; }
 .drop-formats { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin-top: 14px; }
 .chip {
-  font-size: 13px; padding: 4px 11px; border-radius: 999px;
+  font-size: 14px; padding: 4px 11px; border-radius: 999px;
   background: var(--surface-2); color: var(--text-2); border: 1px solid var(--border);
   font-variant-numeric: tabular-nums;
 }
@@ -294,8 +294,8 @@ main { padding-bottom: 64px; }
 }
 .rep:hover { border-color: var(--border-strong); }
 .rep.active { border-color: var(--series-1); box-shadow: inset 0 0 0 1px var(--series-1); }
-.rep .t { font-size: 15.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.rep .m { font-size: 12.5px; color: var(--text-3); display: flex; gap: 6px; flex-wrap: wrap; }
+.rep .t { font-size: 16.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rep .m { font-size: 13.5px; color: var(--text-3); display: flex; gap: 6px; flex-wrap: wrap; }
 
 /* ── 회사 리스트 ──────────────────────────────────────── */
 .colist { list-style: none; margin: 0; padding: 0; }
@@ -316,26 +316,108 @@ main { padding-bottom: 64px; }
 .corow:hover { background: var(--surface-2); }
 .corow.active { background: color-mix(in srgb, var(--series-1) 8%, var(--surface-1)); box-shadow: inset 3px 0 0 var(--series-1); }
 .co-main { display: grid; gap: 3px; min-width: 0; flex: 1 1 220px; }
-.co-name { font-size: 18px; font-weight: 650; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.co-name { font-size: 19px; font-weight: 650; letter-spacing: -0.01em; overflow-wrap: anywhere; }
 .co-meta {
   display: flex; gap: 6px; flex-wrap: wrap;
-  font-size: 13.5px; color: var(--text-3);
+  font-size: 14.5px; color: var(--text-3);
   font-variant-numeric: tabular-nums;
 }
 .co-tags { display: flex; gap: 6px; flex-wrap: wrap; }
 .co-go { color: var(--text-3); font-size: 18px; flex: none; }
 
 .co-trend { display: flex; align-items: center; gap: 9px; flex: none; }
-.co-trend-txt { display: grid; gap: 0; font-size: 12.5px; line-height: 1.35; }
-.co-trend-v { font-size: 15.5px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.co-trend-txt { display: grid; gap: 0; font-size: 13.5px; line-height: 1.35; }
+.co-trend-v { font-size: 16.5px; font-weight: 650; font-variant-numeric: tabular-nums; }
 .co-trend-txt .up, .co-trend-txt .down { font-weight: 600; font-variant-numeric: tabular-nums; }
 .co-trend-span { color: var(--text-3); font-variant-numeric: tabular-nums; }
-.co-trend-empty { font-size: 12px; color: var(--text-3); }
+.co-trend-empty { font-size: 13px; color: var(--text-3); }
+
+/* 행 자체가 버튼이라 삭제 버튼을 그 안에 둘 수 없다. 형제로 나란히 놓는다. */
+.corow-wrap { display: flex; align-items: stretch; }
+.corow-wrap .corow { flex: 1 1 auto; min-width: 0; }
+.co-del {
+  flex: none; align-self: center;
+  margin-right: clamp(8px, 1.5vw, 14px);
+  padding: 6px 10px;
+  border: 1px solid var(--border-strong); border-radius: 8px;
+  background: var(--surface-1); color: var(--text-3);
+  font-size: 13.5px; font-family: inherit; line-height: 1;
+}
+.co-del:hover { color: var(--critical); border-color: var(--critical); }
 
 @media (max-width: 560px) {
   .co-go { display: none; }
   .co-trend { width: 100%; }
 }
+
+/* ── DART 가져오기 목록 ───────────────────────────────── */
+.dart-hits { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; max-height: 340px; overflow-y: auto; }
+.dart-hits > li > button {
+  width: 100%; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 9px 12px; text-align: left;
+  border: 1px solid var(--border); border-radius: 9px;
+  background: var(--surface-1); color: var(--text-1); font-family: inherit; font-size: 15px;
+}
+.dart-hits > li > button:hover:not(:disabled) { background: var(--surface-2); border-color: var(--border-strong); }
+.dart-hits > li > button:disabled { opacity: 0.5; cursor: default; }
+.dh-name { font-weight: 600; flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.dh-code { color: var(--text-3); font-size: 13px; font-variant-numeric: tabular-nums; flex: none; }
+.dh-go { color: var(--series-1); font-size: 13.5px; font-weight: 600; flex: none; }
+
+/* ── 상태 배지를 그대로 필터로 쓰는 칩 ────────────────── */
+.chip-filters { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip-filter {
+  border: 1px solid transparent; cursor: pointer;
+  font-family: inherit; line-height: inherit;
+  transition: box-shadow 0.12s, opacity 0.12s;
+}
+.chip-filter:hover:not(:disabled) { box-shadow: 0 0 0 2px var(--surface-2); }
+.chip-filter.active { box-shadow: 0 0 0 2px var(--text-1); font-weight: 700; }
+.chip-filter:disabled { opacity: 0.4; cursor: default; }
+
+/* ── 삭제 확인 모달 ───────────────────────────────────── */
+.modal-back {
+  position: fixed; inset: 0; z-index: 60;
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px; background: rgba(0, 0, 0, 0.45);
+}
+.modal {
+  width: min(440px, 100%);
+  background: var(--surface-1); color: var(--text-1);
+  border: 1px solid var(--border-strong); border-radius: 14px;
+  padding: 20px; box-shadow: 0 18px 50px rgba(0, 0, 0, 0.3);
+}
+.modal h3 { font-size: 18px; margin-bottom: 8px; }
+.modal p { color: var(--text-2); font-size: 15px; margin-bottom: 14px; }
+.modal-label { display: block; font-size: 13.5px; color: var(--text-3); margin-bottom: 6px; }
+.modal-label code {
+  background: var(--surface-2); border-radius: 5px; padding: 1px 5px; color: var(--text-1);
+}
+.modal-input {
+  width: 100%; padding: 9px 12px; font-size: 15px; font-family: inherit;
+  border-radius: 9px; border: 1px solid var(--border-strong);
+  background: var(--surface-0); color: var(--text-1);
+}
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+.btn-danger {
+  background: var(--critical); border-color: var(--critical); color: #fff; font-weight: 600;
+}
+.btn-danger:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ── 단순 데이터 표(이용 현황) ────────────────────────── */
+.tbl { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+.tbl th, .tbl td {
+  padding: 9px clamp(10px, 1.6vw, 16px);
+  border-bottom: 1px solid var(--border);
+  text-align: left; white-space: nowrap;
+}
+.tbl thead th { background: var(--surface-2); color: var(--text-2); font-weight: 620; }
+.tbl tbody tr:last-child td { border-bottom: none; }
+.tbl tbody tr:hover td { background: color-mix(in srgb, var(--series-1) 4%, var(--surface-1)); }
+.tbl .num { text-align: right; font-variant-numeric: tabular-nums; }
+
+.hide-sm { display: inline; }
+@media (max-width: 720px) { .hide-sm { display: none; } }
 
 /* ── 탭 ───────────────────────────────────────────────── */
 .tabs {
@@ -351,14 +433,14 @@ main { padding-bottom: 64px; }
   padding: 11px 14px;
   border: none; background: none;
   color: var(--text-2);
-  font-weight: 600; font-size: 16px;
+  font-weight: 600; font-size: 17px;
   border-bottom: 2px solid transparent;
   white-space: nowrap;
 }
 .tab:hover { color: var(--text-1); }
 .tab.active { color: var(--series-1); border-bottom-color: var(--series-1); }
 .tab .n {
-  font-size: 12px; color: var(--text-3);
+  font-size: 13px; color: var(--text-3);
   background: var(--surface-2); border-radius: 999px; padding: 1px 6px; margin-left: 5px;
   font-variant-numeric: tabular-nums;
 }
@@ -483,9 +565,16 @@ table.fin .neg { color: var(--critical); }
 
 /* 주석 본문: 문단과 표가 섞여 있다 */
 .notebody { display: grid; gap: 14px; }
-table.fin.note { min-width: 420px; font-size: 14.5px; }
-table.fin.note td, table.fin.note th { padding: 6px 10px; }
+/* 주석·기타사항 안의 표. 본문(.prose 16.5px)과 크기가 2px 넘게 벌어지면
+   같은 카드 안에서 글씨가 들쭉날쭉해 보인다. 붙여 준다. */
+table.fin.note { min-width: 420px; font-size: 15.5px; }
+table.fin.note td, table.fin.note th { padding: 7px 11px; }
 table.fin.note td.lbl, table.fin.note th.lbl { min-width: 130px; }
+/* 재무제표와 달리 주석 표에는 긴 한글 설명이 들어간다.
+   nowrap 을 유지하면 가로로 한없이 늘어나 읽을 수 없다. */
+table.fin.note td, table.fin.note th { white-space: normal; overflow-wrap: anywhere; word-break: keep-all; }
+table.fin.note td.txt { text-align: left; }
+table.fin.note td.lbl, table.fin.note th.lbl { max-width: 22em; }
 
 /* ── 텍스트 블록(감사의견·주석 원문) ──────────────────── */
 /* 문단은 lib/format.js 의 toParagraphs 로 다시 흘리므로 pre-wrap 을 쓰지 않는다.

@@ -16,9 +16,16 @@ export const SUBSIDIARY_PHRASE =
 const CORP_FORM = /주식회사|유한책임회사|유한회사|합자회사|합명회사|㈜|㈲|\(주\)|\(유\)/g
 const CORP_FORM_EN = /(?:co|ltd|inc|corp|corporation|company|limited)\.?/gi
 
-/** 표기가 달라도 같은 회사로 묶기 위한 정규화 */
+/**
+ * 표기가 달라도 같은 회사로 묶기 위한 정규화.
+ *
+ * NFC 로 먼저 합친다. DART 원문의 한글은 NFD(자모 분해)로 오는 경우가 있는데,
+ * 분해된 자모(U+1100~)는 '가-힣' 범위 밖이라 아래 필터에 전부 걸러져 빈 문자열이 된다.
+ * 그러면 화면에는 "알체라"로 멀쩡히 보이면서 키만 해시로 떨어져 같은 회사가 둘로 갈린다.
+ */
 export function normalizeCompany(name) {
   return String(name || '')
+    .normalize('NFC')
     .replace(SUBSIDIARY_PHRASE, '')
     .replace(CORP_FORM, '')
     .replace(CORP_FORM_EN, '')
@@ -29,6 +36,7 @@ export function normalizeCompany(name) {
 /** 화면에 보여줄 회사명 — 종속기업 수식어와 앞뒤 군더더기를 떼어낸다 */
 export function displayCompany(name) {
   const clean = String(name || '')
+    .normalize('NFC')
     .replace(SUBSIDIARY_PHRASE, ' ')
     .replace(/\s+/g, ' ')
     .trim()
@@ -115,11 +123,22 @@ export function periodEntriesOf(report) {
  * @param {object|null} prev 기존 회사 문서 (없으면 null)
  * @param {object} report 새로 분석한 보고서
  */
-export function accumulateCompany(prev, report) {
+export function accumulateCompany(prev, report, owner) {
   const meta = report.meta || {}
   const key = companyKeyOf(meta.company)
   const now = report.createdAt || Date.now()
-  const base = prev || { key, createdAt: now, periods: {}, aliases: [], reportIds: [] }
+  // 소유자와 공통 노출 여부는 최초 생성 때만 정하고 이후 누적에서는 건드리지 않는다.
+  // (다른 사람이 같은 회사의 다른 연도를 올려도 주인이 바뀌면 안 된다)
+  const base = prev || {
+    key,
+    createdAt: now,
+    periods: {},
+    aliases: [],
+    reportIds: [],
+    ownerUid: owner?.uid || null,
+    ownerEmail: owner?.email || null,
+    shared: false,
+  }
 
   const periods = { ...(base.periods || {}) }
   for (const [pk, entry] of Object.entries(periodEntriesOf(report))) {
@@ -238,5 +257,9 @@ export function companyView(doc) {
     primaryLabel: primary[0]?.periodLabel || '연간',
     trend,
     storage: doc.storage || 'local',
+    // 소유·공개 상태는 목록과 관리자 화면에서 그대로 쓴다.
+    shared: doc.shared === true,
+    ownerUid: doc.ownerUid || null,
+    ownerEmail: doc.ownerEmail || null,
   }
 }

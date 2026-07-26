@@ -9,6 +9,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "node --test tests/parse.test.mjs",
+    "build:corp": "node scripts/build-corp-index.mjs",
     "deploy": "npm run build && firebase deploy"
   },
   "dependencies": {

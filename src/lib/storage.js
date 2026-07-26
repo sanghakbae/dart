@@ -7,11 +7,13 @@
 // reportId 는 연도·기간종류·연결여부로 결정되므로 같은 보고서를 다시 올리면
 // 새 문서가 생기지 않고 갱신된다. Firestore 를 쓸 수 없으면 IndexedDB 로 폴백한다.
 
-import { db, isFirebaseConfigured } from '../firebase.js'
+import { db, auth, isFirebaseConfigured } from '../firebase.js'
 import {
-  collection, doc, setDoc, getDoc, getDocs, query, orderBy, writeBatch, limit, runTransaction,
+  collection, doc, setDoc, getDoc, getDocs, query, orderBy, where, writeBatch, limit,
+  runTransaction, updateDoc, deleteDoc,
 } from 'firebase/firestore'
 import { accumulateCompany, companyView, companyKeyOf, reportIdOf } from './company.js'
+import { isAdmin } from './auth.js'
 
 const CHUNK = 400_000 // Firestore 문서 1MB 한도 대비 여유 있게
 const COL = 'companies'
@@ -40,11 +42,18 @@ function sanitize(value, depth = 0, inArray = false) {
   return value
 }
 
+/** 누가 올렸는지. 공유 저장소라 목록에서 출처를 알 수 있어야 한다. */
+function uploader() {
+  const u = auth?.currentUser
+  return u ? { uid: u.uid, email: u.email || null, name: u.displayName || null } : null
+}
+
 /** 목록·추이 계산에 쓰는 가벼운 요약(본문 제외) */
 function toSummary(report) {
   const { rawText, blocks, notes, sections, ...rest } = report
   return sanitize({
     ...rest,
+    uploadedBy: uploader(),
     notesIndex: (notes?.items || []).map((n) => ({ no: n.no, title: n.title, page: n.page, length: n.body?.length || 0 })),
     notesCount: notes?.count || 0,
     notesFound: Boolean(notes?.found),
@@ -163,15 +172,35 @@ export async function saveReport(report) {
   return { report: { ...withKeys, storage: 'local' }, companyKey, storage: 'local', warning: null }
 }
 
-/** 회사 목록 (누적 문서 기준) @returns {{companies:object[], warning:string|null, dbState:string}} */
+/**
+ * 회사 목록 (누적 문서 기준).
+ *
+ * 관리자는 전부 보고, 그 외에는 '내가 올린 것 + 관리자가 공통 노출로 지정한 것'만 본다.
+ * 규칙이 조회 결과를 문서 단위로 검사하므로, 한 번에 훑지 않고 통과 조건에 맞춰
+ * 쿼리를 둘로 나눠 던진다(하나라도 규칙에 걸리면 쿼리 전체가 실패한다).
+ *
+ * @returns {{companies:object[], warning:string|null, dbState:string}}
+ */
 export async function listCompanies() {
   let cloud = []
   let warning = null
   let dbState = usesFirestore ? 'db' : 'local'
   if (usesFirestore) {
+    const user = auth?.currentUser
     try {
-      const snap = await getDocs(query(collection(db, COL), orderBy('updatedAt', 'desc'), limit(500)))
-      cloud = snap.docs.map((d) => ({ ...d.data(), key: d.id, storage: 'firestore' }))
+      const rows = []
+      if (isAdmin(user)) {
+        const snap = await getDocs(query(collection(db, COL), orderBy('updatedAt', 'desc'), limit(500)))
+        rows.push(...snap.docs)
+      } else {
+        // where + limit 조합은 복합 색인이 필요 없다. 정렬은 아래에서 한다.
+        const qs = [getDocs(query(collection(db, COL), where('shared', '==', true), limit(500)))]
+        if (user) qs.push(getDocs(query(collection(db, COL), where('ownerUid', '==', user.uid), limit(500))))
+        for (const snap of await Promise.all(qs)) rows.push(...snap.docs)
+      }
+      const byId = new Map()
+      for (const d of rows) byId.set(d.id, { ...d.data(), key: d.id, storage: 'firestore' })
+      cloud = [...byId.values()]
     } catch (e) {
       warning = firestoreHint(e)
       dbState = e?.code === 'permission-denied' ? 'blocked' : 'local'
@@ -233,6 +262,75 @@ export async function loadContent(companyKey, reportId) {
   return loadContentFromLocal(companyKey, reportId)
 }
 
+/**
+ * 회사 하나를 통째로 지운다 — 본문 청크 → 보고서 → 회사 문서 순.
+ * Firestore 클라이언트에는 재귀 삭제가 없어 아래에서 직접 훑는다.
+ * 클라우드와 로컬 사본을 모두 지우고, 클라우드가 막혀도 로컬은 정리한다.
+ * @returns {{deleted:{reports:number, chunks:number}, warning:string|null}}
+ */
+export async function deleteCompany(companyKey) {
+  let warning = null
+  const deleted = { reports: 0, chunks: 0 }
+
+  if (usesFirestore) {
+    // 회사 문서를 가장 먼저 지운다. 이게 권한 관문이다.
+    //
+    // 반대로 하면(본문 → 보고서 → 회사) 규칙이 본문 삭제만 허용하는 상태에서
+    // 본문만 날아가고 목록에는 그대로 남는 사고가 난다. 실제로 그렇게 당했다.
+    // 여기서 막히면 아무것도 건드리지 않은 채로 끝난다.
+    try {
+      await deleteDoc(companyDoc(companyKey))
+    } catch (e) {
+      return { deleted, warning: firestoreHint(e) }
+    }
+
+    // 관문을 통과했으면 하위도 같은 권한으로 지워진다. 중간에 실패해도
+    // 회사 문서가 이미 없어 목록에는 안 보이므로, 남은 건 조용히 넘긴다.
+    try {
+      const reps = await getDocs(collection(db, COL, companyKey, 'reports'))
+      for (const r of reps.docs) {
+        const chunks = await getDocs(contentCol(companyKey, r.id))
+        await commitAll(chunks.docs.map((d) => d.ref))
+        deleted.chunks += chunks.size
+      }
+      await commitAll(reps.docs.map((d) => d.ref))
+      deleted.reports = reps.size
+    } catch (e) {
+      warning = `회사는 삭제했지만 하위 문서 일부가 남았습니다: ${firestoreHint(e)}`
+    }
+  }
+
+  await deleteLocalCompany(companyKey).catch(() => {})
+  return { deleted, warning }
+}
+
+/**
+ * 공통 노출 지정/해제 — 관리자 전용(실제 차단은 규칙이 한다).
+ * 켜면 로그인한 모든 계정의 목록에 나타나고, 끄면 올린 본인과 관리자만 본다.
+ */
+export async function setCompanyShared(companyKey, shared) {
+  if (!usesFirestore) throw new Error('Firestore 를 쓰지 않는 환경입니다.')
+  await updateDoc(companyDoc(companyKey), { shared: Boolean(shared), sharedAt: shared ? Date.now() : null })
+}
+
+/** 문서 참조 묶음을 400개씩 끊어 지운다(배치 한도 500). */
+async function commitAll(refs) {
+  for (let i = 0; i < refs.length; i += 400) {
+    const batch = writeBatch(db)
+    for (const ref of refs.slice(i, i + 400)) batch.delete(ref)
+    await batch.commit()
+  }
+}
+
+async function deleteLocalCompany(ck) {
+  const reports = await listLocalReports(ck)
+  await tx('companies', 'readwrite', (s) => s.delete(ck)).catch(() => {})
+  for (const r of reports) {
+    await tx('reports', 'readwrite', (s) => s.delete(localId(ck, r.id))).catch(() => {})
+    await tx('contents', 'readwrite', (s) => s.delete(localId(ck, r.id))).catch(() => {})
+  }
+}
+
 // ── Firestore ────────────────────────────────────────────────
 const companyDoc = (ck) => doc(db, COL, ck)
 const reportDoc = (ck, rid) => doc(db, COL, ck, 'reports', rid)
@@ -243,9 +341,16 @@ async function saveToFirestore(report, ck, rid) {
   // (같은 연도를 '당기'로 보고한 값이 '전기' 비교치를 덮어써야 하므로 merge 만으론 부족하다)
   await runTransaction(db, async (txn) => {
     const snap = await txn.get(companyDoc(ck))
-    const next = accumulateCompany(snap.exists() ? snap.data() : null, report)
+    const next = accumulateCompany(snap.exists() ? snap.data() : null, report, uploader())
     txn.set(companyDoc(ck), sanitize({ ...next, storage: 'firestore' }))
   })
+
+  // 정정보고서는 원본과 reportId 가 같아 서로를 덮는다. 정정본이 이겨야 하므로,
+  // 이미 정정본이 저장돼 있는데 원본을 올리면 본문까지 되돌아가지 않게 건너뛴다.
+  const prevRep = await getDoc(reportDoc(ck, rid))
+  if (prevRep.exists() && prevRep.data()?.meta?.isAmendment && !report.meta?.isAmendment) {
+    return { skipped: 'amendment-kept' }
+  }
 
   await setDoc(reportDoc(ck, rid), { ...toSummary(report), storedAt: Date.now(), storage: 'firestore' })
 
@@ -328,7 +433,7 @@ const localId = (ck, rid) => `${ck}::${rid}`
 
 async function saveToLocal(report, ck, rid) {
   const prev = await tx('companies', 'readonly', (s) => s.get(ck)).catch(() => null)
-  const next = accumulateCompany(prev || null, report)
+  const next = accumulateCompany(prev || null, report, uploader())
   await tx('companies', 'readwrite', (s) => s.put({ ...next, storage: 'local' }))
   await tx('reports', 'readwrite', (s) =>
     s.put({ ...toSummary(report), localId: localId(ck, rid), id: rid, companyKey: ck, storage: 'local', storedAt: Date.now() })

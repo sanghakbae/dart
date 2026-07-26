@@ -3,6 +3,7 @@
 // 로그인(OAuth)은 쓰지 않는다 — 저장 경로 분리는 src/lib/workspace.js 참고.
 import { initializeApp } from 'firebase/app'
 import { getFirestore } from 'firebase/firestore'
+import { getAuth, GoogleAuthProvider } from 'firebase/auth'
 import { getAnalytics, isSupported } from 'firebase/analytics'
 
 const env = import.meta.env
@@ -21,6 +22,11 @@ export const isFirebaseConfigured = Boolean(firebaseConfig.apiKey && firebaseCon
 
 const app = isFirebaseConfigured ? initializeApp(firebaseConfig) : null
 export const db = app ? getFirestore(app) : null
+
+// Google 로그인. 업로드·열람은 로그인 없이 그대로 쓰고, 삭제처럼 되돌릴 수 없는 작업에만 쓴다.
+export const auth = app ? getAuth(app) : null
+export const googleProvider = new GoogleAuthProvider()
+googleProvider.setCustomParameters({ prompt: 'select_account' })
 
 // Analytics 는 지원되는 브라우저 환경에서만 (로컬 개발·비지원 환경 안전 가드)
 export let analytics = null

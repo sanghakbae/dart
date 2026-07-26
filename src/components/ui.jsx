@@ -196,8 +196,14 @@ export function NoteBody({ content, body, muted }) {
                   <tr key={ri}>
                     {r.map((cell, ci) => {
                       const n = ci === 0 ? null : parseAmountish(cell)
+                      // 주석 표에는 숫자가 아닌 설명 칸이 섞여 있다. 그것까지 우측정렬하면
+                      // 읽는 순서가 끊기므로 글자 칸은 좌측정렬로 되돌린다.
+                      const isText = ci > 0 && n == null && /[가-힣A-Za-z]/.test(cell || '')
                       return (
-                        <td key={ci} className={ci === 0 ? 'lbl' : n != null && n < 0 ? 'neg' : undefined}>
+                        <td
+                          key={ci}
+                          className={ci === 0 ? 'lbl' : n != null && n < 0 ? 'neg' : isText ? 'txt' : undefined}
+                        >
                           {cell || (ci === 0 ? '' : '-')}
                         </td>
                       )

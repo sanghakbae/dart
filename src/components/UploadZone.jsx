@@ -39,7 +39,7 @@ export default function UploadZone({ onFiles, onSample, busy, progress, phase, c
 
       {busy ? (
         <div className="stack" style={{ maxWidth: 460, marginInline: 'auto' }}>
-          <div style={{ display: 'flex', gap: 9, alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>
+          <div style={{ display: 'flex', gap: 9, alignItems: 'center', justifyContent: 'center', fontSize: 15 }}>
             <span className="spinner" />
             {phase || '분석 중'}
           </div>
@@ -67,6 +67,7 @@ export default function UploadZone({ onFiles, onSample, busy, progress, phase, c
           </div>
           {!compact && (
             <div className="drop-formats">
+              <span className="chip">ZIP</span>
               <span className="chip">PDF</span>
               <span className="chip">HTML</span>
               <span className="chip">XLSX / XLS</span>
