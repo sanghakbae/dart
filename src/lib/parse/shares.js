@@ -7,7 +7,10 @@
 import { parseAmount } from './numbers.js'
 
 const SHARE_COUNT = /([\d,]+)\s*주/
-const ROLE = '대표이사|사내이사|사외이사|기타비상무이사|등기임원|미등기임원|임원|이사|감사|대주주|최대주주'
+// '감사' 는 '감사인'(회계법인)과 겹치므로 뒤에 '인' 이 오면 제외한다.
+const ROLE = '대표이사|사내이사|사외이사|기타비상무이사|등기임원|미등기임원|임원|이사|감사(?!인)|대주주|최대주주'
+// 법인·기관 이름은 임원이 아니다.
+const NOT_PERSON = /(회계법인|법인|주식회사|유한회사|회사|은행|증권|보험|캐피탈|파트너스|조합|재단|기금|펀드|투자)$/
 
 export function parseShares(doc, notes) {
   const text = doc.fullText
@@ -45,7 +48,7 @@ export function parseShares(doc, notes) {
 function findMajorShareholder(text) {
   const re = /최대\s*주주[^\n]{0,40}?([가-힣]{2,12})\s*(?:은|는|이|가)\s*([\d,]+)\s*주[^\n]{0,24}?([\d.]+)\s*%/
   const m = re.exec(text)
-  if (m) return { name: m[1], shares: parseAmount(m[2]), ratio: Number(m[3]), raw: m[0].trim() }
+  if (m && !NOT_PERSON.test(m[1])) return { name: m[1], shares: parseAmount(m[2]), ratio: Number(m[3]), raw: m[0].trim() }
 
   const loose = /최대\s*주주[^\n]{0,60}?([가-힣]{2,12})\s*(?:은|는|이|가)[^\n]{0,40}?([\d.]+)\s*%/.exec(text)
   if (loose) return { name: loose[1], shares: null, ratio: Number(loose[2]), raw: loose[0].trim() }
@@ -61,13 +64,14 @@ function findExecutiveHoldings(text) {
   const seen = new Set()
   const push = (name, role, shares, ratio, raw) => {
     if (!name || seen.has(name)) return
+    if (NOT_PERSON.test(name)) return // "삼정회계법인" 같은 기관명
     seen.add(name)
     out.push({ name, role: role || null, shares: shares ?? null, ratio: ratio ?? null, raw })
   }
 
   // "…대표이사인 신동호는 2,717,600주(지분율 67.94%)의 주식을 보유"
   const re = new RegExp(
-    `(${ROLE})\\s*(?:인|이신|였던)?\\s*([가-힣]{2,12})\\s*(?:은|는|이|가)\\s*([\\d,]+)\\s*주(?:[^\\n]{0,24}?([\\d.]+)\\s*%)?`,
+    `(?<![가-힣])(${ROLE})\\s*(?:인|이신|였던)?\\s*([가-힣]{2,6})\\s*(?:은|는|이|가)\\s*([\\d,]+)\\s*주(?:[^\\n]{0,24}?([\\d.]+)\\s*%)?`,
     'g'
   )
   let m
@@ -76,7 +80,7 @@ function findExecutiveHoldings(text) {
   }
 
   // "신동호(대표이사)는 …주" 순서가 뒤집힌 표기
-  const re2 = new RegExp(`([가-힣]{2,12})\\s*\\((${ROLE})\\)\\s*(?:은|는|이|가)?\\s*([\\d,]+)\\s*주`, 'g')
+  const re2 = new RegExp(`([가-힣]{2,6})\\s*\\((${ROLE})\\)\\s*(?:은|는|이|가)?\\s*([\\d,]+)\\s*주`, 'g')
   while ((m = re2.exec(text))) {
     push(m[1], m[2], parseAmount(m[3]), null, m[0].trim())
   }

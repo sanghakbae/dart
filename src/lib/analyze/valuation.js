@@ -30,7 +30,7 @@ export function valuate(values, timelineRows = [], shares = null, multiples = DE
   const liabilities = num(values?.totalLiabilities?.current)
   const cash = num(values?.cash?.current)
   const debt = (num(values?.shortTermDebt?.current) ?? 0) + (num(values?.longTermDebt?.current) ?? 0)
-  const issued = num(shares?.issuedShares)
+  const issued = num(shares?.issuedShares) || null // 0주는 값이 없는 것과 같다
 
   const methods = []
 

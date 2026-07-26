@@ -17,6 +17,10 @@ import { detectPeriodType } from '../src/lib/parse/numbers.js'
 import { normalizeCompany, displayCompany, accumulateCompany, companyView, reportIdOf } from '../src/lib/company.js'
 import { waterfallSteps, headlineTiles } from '../src/lib/analyze/view.js'
 import { toParagraphs } from '../src/lib/format.js'
+import { parseShares } from '../src/lib/parse/shares.js'
+import { valuate } from '../src/lib/analyze/valuation.js'
+import { buildChecklist } from '../src/lib/analyze/checklist.js'
+import { buildContent } from '../src/lib/parse/blocks.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
 
@@ -538,6 +542,89 @@ test('분기보고서는 연간 추이와 같은 축에 섞이지 않는다', ()
   assert.deepEqual(q3Line.years, [2024, 2025])
   assert.equal(q3Line.rows[1].label, '2025년 3분기')
   assert.equal(q3Line.byYear.get(2024).values.revenue, 92000000000)
+})
+
+test('주주·임원 추출 — 기관명을 사람으로 잡지 않는다', () => {
+  const doc = docFromText(
+    [
+      '1. 일반 사항',
+      '당기말 현재 최대 주주(보통주)이자 대표이사인 신동호는 2,717,600주(지분율 67.94%)의 주식을 보유하고 있습니다.',
+      '감사인 삼정회계법인은 2,717,600주를 보유하고 있습니다.',
+      '수권주식수\t50,000,000주\t80,000주',
+      '발행주식수\t4,000,000주\t20,000주',
+    ].join('\n')
+  )
+  const s = parseShares(doc, parseNotes(doc))
+  assert.equal(s.majorShareholder.name, '신동호')
+  assert.equal(s.majorShareholder.shares, 2717600)
+  assert.equal(s.majorShareholder.ratio, 67.94)
+  assert.equal(s.issuedShares, 4000000)
+  assert.equal(s.authorizedShares, 50000000)
+
+  // '감사인'은 회계법인이지 임원이 아니다 — '감사' 역할로 잡히면 안 된다
+  assert.deepEqual(s.executives.map((e) => e.name), ['신동호'])
+  assert.equal(s.executives[0].role, '대표이사')
+})
+
+test('기업가치 — 가정과 경계값', () => {
+  // 적자면 PER 방법을 만들지 않는다
+  const loss = valuate({ totalEquity: { current: 1000 }, netIncome: { current: -50 } }, [], null)
+  assert.equal(loss.methods.some((m) => m.key === 'per'), false)
+
+  // 발행주식 0 은 값이 없는 것과 같다(0 으로 나누지 않는다)
+  const zero = valuate({ totalEquity: { current: 1000 } }, [], { issuedShares: 0 })
+  assert.equal(zero.issuedShares, null)
+  assert.deepEqual(zero.perShare, [])
+
+  // 상증법: 최근 3개년 3:2:1 가중평균
+  const rows = [
+    { year: 2023, netIncome: 100 },
+    { year: 2024, netIncome: 200 },
+    { year: 2025, netIncome: 300 },
+  ]
+  const v = valuate({ totalEquity: { current: 1000 } }, rows, { issuedShares: 10 })
+  const stat = v.methods.find((m) => m.key === 'statutory')
+  assert.ok(stat, '상증법 평가 누락')
+  assert.equal(round(stat.weightedProfit, 2), 233.33)
+
+  // 순손익이 작으면 순자산가치의 80% 가 하한이 된다
+  const floored = valuate({ totalEquity: { current: 1000 } }, [{ year: 2025, netIncome: 1 }], { issuedShares: 10 })
+  assert.equal(round(floored.methods.find((m) => m.key === 'statutory').perShare, 2), 80)
+})
+
+test('점검 체크리스트 — 자본잠식·경계값', () => {
+  const wiped = buildChecklist({ values: { capitalStock: { current: 100 }, totalEquity: { current: -5 } } }, { rows: [] }, null)
+  const w = wiped.items.find((i) => i.id === 'capitalImpairment')
+  assert.equal(w.status, 'bad')
+  assert.match(w.value, /완전자본잠식/)
+
+  const partial = buildChecklist({ values: { capitalStock: { current: 100 }, totalEquity: { current: 60 } } }, { rows: [] }, null)
+  assert.equal(partial.items.find((i) => i.id === 'capitalImpairment').status, 'warn')
+
+  // 영업이익이 0 이면 괴리 항목을 만들지 않는다(0으로 나누지 않는다)
+  const zeroOp = buildChecklist({ values: { operatingProfit: { current: 0 }, netIncome: { current: 10 } } }, { rows: [] }, null)
+  assert.equal(zeroOp.items.some((i) => i.id === 'nonOperating'), false)
+
+  // 결산일보다 앞선 날짜는 감사 지연으로 보지 않는다
+  const badDate = buildChecklist({ meta: { fiscalYear: 2024, reportDate: '2024-06-01' } }, { rows: [] }, null)
+  assert.equal(badDate.items.some((i) => i.id === 'lag'), false)
+
+  // 데이터가 없어도 점검 항목은 만들어진다
+  assert.ok(buildChecklist({}, { rows: [] }, null).checked > 0)
+})
+
+test('본문 블록 — 목차는 정렬용 블록으로 분리한다', () => {
+  const toc = buildContent([
+    { text: '감 사 보 고 서 ...........................1', cells: ['감 사 보 고 서 ...........................1'] },
+    { text: '주석....................................11', cells: ['주석....................................11'] },
+  ])
+  assert.equal(toc.length, 1)
+  assert.equal(toc[0].type, 'toc')
+  assert.deepEqual(toc[0].rows.map((r) => r.page), [1, 11])
+
+  // 일반 문장은 표로 오인하지 않는다
+  const para = buildContent([{ text: '당사는 2011년에 설립되었습니다.', cells: ['당사는 2011년에 설립되었습니다.'] }])
+  assert.equal(para[0].type, 'p')
 })
 
 function round(n, d) {
