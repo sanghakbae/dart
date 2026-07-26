@@ -30,6 +30,40 @@ function json(body, status = 200, extra = {}) {
 }
 
 /**
+ * 상류(opendart) 호출.
+ *
+ * Cloudflare Worker 에서 부르면 "Too many redirects" 로 실패한다 — 개발 서버(Node)나
+ * 사무실 IP 에서는 200 이 그냥 온다. opendart 가 데이터센터 IP·빈 User-Agent 를
+ * 걸러 리다이렉트로 되돌리는 것으로 보인다. 그래서
+ *   1) 브라우저 같은 헤더를 붙이고
+ *   2) 리다이렉트를 직접 따라가며 쿠키를 이어 준다(쿠키 한 번 받고 통과하는 형태 대응).
+ * 그래도 반복되면 인증키가 들어간 URL 을 노출하지 않는 메시지로 끊는다.
+ */
+const UPSTREAM_HEADERS = {
+  'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36',
+  accept: 'application/json,text/plain,application/zip,*/*',
+  'accept-language': 'ko-KR,ko;q=0.9,en;q=0.8',
+}
+
+async function fetchUpstream(target) {
+  let url = String(target)
+  let cookie = ''
+  for (let hop = 0; hop < 4; hop++) {
+    const res = await fetch(url, {
+      redirect: 'manual',
+      headers: { ...UPSTREAM_HEADERS, ...(cookie ? { cookie } : {}) },
+    })
+    if (res.status < 300 || res.status >= 400) return res
+    const loc = res.headers.get('location')
+    if (!loc) return res
+    const set = res.headers.get('set-cookie')
+    if (set) cookie = [cookie, set.split(';')[0]].filter(Boolean).join('; ')
+    url = new URL(loc, url).toString()
+  }
+  throw new Error(`DART 가 리다이렉트를 반복합니다 (${new URL(url).pathname}). 상류에서 요청을 차단한 것으로 보입니다.`)
+}
+
+/**
  * ZIP(단일 엔트리)에서 첫 파일을 꺼낸다. DART document.xml 응답은 XML 하나만 들어 있다.
  * DecompressionStream 은 Worker·Node18+·최신 브라우저 모두 지원한다.
  */
@@ -79,7 +113,7 @@ async function dartJson(path, params, key) {
   const url = new URL(`${DART}/${path}`)
   url.searchParams.set('crtfc_key', key)
   for (const [k, v] of Object.entries(params)) if (v != null && v !== '') url.searchParams.set(k, v)
-  const res = await fetch(url)
+  const res = await fetchUpstream(url)
   if (!res.ok) throw new Error(`DART HTTP ${res.status}`)
   return res.json()
 }
@@ -143,7 +177,7 @@ export async function handleDart(req, key) {
       const durl = new URL(`${DART}/document.xml`)
       durl.searchParams.set('crtfc_key', key)
       durl.searchParams.set('rcept_no', rcept)
-      const res = await fetch(durl)
+      const res = await fetchUpstream(durl)
       if (!res.ok) throw new Error(`DART HTTP ${res.status}`)
       const buf = await res.arrayBuffer()
       const xml = decodeDart(await unzipFirst(buf))

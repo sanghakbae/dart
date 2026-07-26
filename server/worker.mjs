@@ -66,8 +66,30 @@ export default {
       ? await handleNps(forwarded, env.NPS_API_KEY || '')
       : await handleDart(forwarded, env.DART_API_KEY || '')
 
-    return response || json({ error: '처리할 수 없는 요청입니다.' }, 404, {})
+    if (!response) return json({ error: '처리할 수 없는 요청입니다.' }, 404, {})
+    return scrub(response, env)
   },
+}
+
+/**
+ * 오류 응답에서 인증키를 지운다.
+ *
+ * 상류 요청 URL 에 crtfc_key·serviceKey 가 들어가는데, Cloudflare 의 fetch 실패 메시지
+ * ("Too many redirects. <url>, <url>")는 그 URL 을 그대로 담는다. 그걸 그대로 내보내면
+ * 브라우저에 인증키가 노출된다. 성공 응답은 본문이 클 수 있어 건드리지 않는다.
+ */
+async function scrub(response, env) {
+  if (response.status < 400) return response
+  const keys = [env.DART_API_KEY, env.NPS_API_KEY].filter((k) => k && k.length >= 8)
+  if (!keys.length) return response
+
+  const text = await response.text()
+  let out = text
+  for (const k of keys) out = out.split(k).join('<KEY>')
+  // 키를 지운 뒤에도 상류 URL 이 남으면 통째로 줄인다.
+  out = out.replace(/https?:\/\/[^\s",]+/g, (m) => new URL(m).origin + new URL(m).pathname)
+  if (out === text) return response
+  return new Response(out, { status: response.status, headers: response.headers })
 }
 
 /** 검증에 실패한 Origin 은 지워서 핸들러가 '*' 로 응답하지 않게 한다 */
