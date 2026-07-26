@@ -1,4 +1,4 @@
-import { Card, Badge, Callout, Disclose, Empty, KV, Prose } from '../ui'
+import { Card, Badge, Callout, Disclose, Empty, KV, Prose, NoteBody } from '../ui'
 import { dateText } from '../../lib/format'
 
 const VERDICT_HELP = {
@@ -7,6 +7,15 @@ const VERDICT_HELP = {
   adverse: '재무제표가 공정하게 표시되지 않았다는 의견입니다. 심각한 신호입니다.',
   disclaimer: '감사 범위가 제한되어 의견을 표명하지 않았습니다. 심각한 신호입니다.',
   unknown: '문서에서 감사의견 문단을 찾지 못했습니다. 재무제표만 담긴 파일일 수 있습니다.',
+}
+
+/** 절 원문에서 표·목차 구조를 살린 블록을 찾아온다(없으면 문단으로 표시). */
+function sectionContent(list, keys) {
+  for (const k of keys) {
+    const s = (list || []).find((x) => x.key === k)
+    if (s?.content?.length) return s.content
+  }
+  return null
 }
 
 export default function OpinionTab({ report, sections, loading }) {
@@ -94,7 +103,7 @@ export default function OpinionTab({ report, sections, loading }) {
 
       {other && (
         <Card title="기타사항 · 기타정보">
-          <Prose text={other} muted />
+          <NoteBody content={sectionContent(list, ['other', 'otherInfo'])} body={other} muted />
         </Card>
       )}
 
@@ -102,7 +111,7 @@ export default function OpinionTab({ report, sections, loading }) {
         {list.length ? (
           list.map((s, i) => (
             <Disclose key={`${s.key}-${i}`} summary={s.label} count={`${(s.text || '').length.toLocaleString('ko-KR')}자`}>
-              <Prose text={s.text} muted />
+              <NoteBody content={s.content} body={s.text} muted />
             </Disclose>
           ))
         ) : (

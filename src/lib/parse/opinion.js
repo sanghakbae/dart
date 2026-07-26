@@ -1,6 +1,8 @@
 // 감사보고서 본문(서술부)을 표준 절 단위로 쪼개고 감사의견 유형을 판정한다.
 // 2018년 이후 신 감사보고서 체계의 표준 표제를 기준으로 한다.
 
+import { buildContent } from './blocks.js'
+
 const HEADINGS = [
   { key: 'opinion', label: '감사의견', re: /^(감사의견|검토의견)\s*$/ },
   { key: 'qualifiedBasis', label: '한정의견의 근거', re: /^한정의견의?\s*근거/ },
@@ -19,37 +21,51 @@ const HEADINGS = [
 ]
 
 export function parseNarrative(doc) {
-  const lines = doc.rows.map((r) => r.text.replace(/\t+/g, ' ').replace(/\s+/g, ' ').trim())
+  // 절 본문에도 표(K-IFRS 전환 조정표, 감사참여자 등)와 목차가 들어 있어
+  // 셀 구조를 버리면 한 문단으로 뭉개진다. 줄마다 cells 를 함께 들고 다닌다.
+  const rows = doc.rows.map((r) => ({
+    text: r.text.replace(/\t+/g, ' ').replace(/\s+/g, ' ').trim(),
+    cells: (r.cells || []).map((c) => String(c).trim()).filter((c) => c !== ''),
+  }))
   const sections = []
   let cur = { key: 'preamble', label: '표지 및 수신', lines: [], startLine: 0 }
 
-  lines.forEach((line, i) => {
-    if (!line) return
-    const head = matchHeading(line)
+  rows.forEach((row, i) => {
+    if (!row.text) return
+    const head = matchHeading(row.text)
     if (head) {
       if (cur.lines.length) sections.push(cur)
       cur = { key: head.key, label: head.label, lines: [], startLine: i }
       // 표제와 본문이 한 줄에 붙은 경우 잔여 텍스트를 본문으로 살린다.
       const rest = head.rest.trim()
-      if (rest) cur.lines.push(rest)
+      if (rest) cur.lines.push({ text: rest, cells: [rest] })
       return
     }
-    cur.lines.push(line)
+    cur.lines.push(row)
   })
   if (cur.lines.length) sections.push(cur)
 
   const byKey = {}
   for (const s of sections) {
-    const text = s.lines.join('\n').trim()
-    if (!byKey[s.key]) byKey[s.key] = { key: s.key, label: s.label, text, startLine: s.startLine }
-    else byKey[s.key].text += `\n${text}`
+    const text = s.lines.map((l) => l.text).join('\n').trim()
+    if (!byKey[s.key]) byKey[s.key] = { key: s.key, label: s.label, text, lines: s.lines, startLine: s.startLine }
+    else {
+      byKey[s.key].text += `\n${text}`
+      byKey[s.key].lines = [...byKey[s.key].lines, ...s.lines]
+    }
   }
 
   const opinionText = byKey.opinion?.text || ''
   const verdict = classifyOpinion(opinionText, doc.fullText)
 
   return {
-    sections: Object.values(byKey).map((s) => ({ ...s, text: s.text.trim() })),
+    sections: Object.values(byKey).map((s) => ({
+      key: s.key,
+      label: s.label,
+      startLine: s.startLine,
+      text: s.text.trim(),
+      content: buildContent(s.lines || []),
+    })),
     opinion: {
       ...verdict,
       text: trim(opinionText, 6000),

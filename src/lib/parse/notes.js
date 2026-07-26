@@ -5,7 +5,7 @@
 // 셀 구조를 버리고 텍스트로 합치면 표가 한 문단으로 뭉개지므로,
 // 추출기가 준 cells 를 살려 표 블록과 문단 블록으로 나눠 보관한다.
 
-import { parseAmount } from './numbers.js'
+import { buildContent } from './blocks.js'
 
 const NOTE_HEAD = /^(\d{1,2})\.\s*(.{2,60})$/
 const NOTE_START = /^주\s*석\s*$|재무제표에?\s*대한\s*주석/
@@ -70,85 +70,4 @@ export function parseNotes(doc) {
       content: buildContent(it.lines),
     })),
   }
-}
-
-/** 셀 중 금액으로 읽히는 개수 */
-function amountCount(cells) {
-  let n = 0
-  for (const c of cells) if (parseAmount(c) !== null) n++
-  return n
-}
-
-const HEADER_HINT = /구\s*분|당\s*기|전\s*기|과\s*목|금\s*액|내\s*역|합\s*계|계정과목|항\s*목/
-
-/**
- * 표 한 줄을 [항목명, 금액…] 으로 정규화한다.
- * DART 원문은 "합 계" 처럼 글자 사이에 공백이 있어 항목명이 여러 셀로 갈리는데,
- * 그대로 두면 줄마다 열 수가 달라져 빈 칸이 생긴다.
- */
-function normalizeRow(cells) {
-  const firstAmount = cells.findIndex((c) => parseAmount(c) !== null)
-  if (firstAmount <= 0) return [...cells]
-  const label = cells.slice(0, firstAmount).join(' ').replace(/\s+/g, ' ').trim()
-  return [label, ...cells.slice(firstAmount)]
-}
-
-/**
- * 주석 본문 줄들을 문단 블록과 표 블록으로 나눈다.
- * 금액 셀이 2개 이상인 줄이 이어지면 표로 본다(당기·전기 두 열이 기본 형태).
- */
-function buildContent(lines) {
-  const out = []
-  let para = []
-  let table = []
-
-  // para 에는 줄 객체가 담긴다(표 머리행 판정에 cells 가 필요하다). 텍스트는 여기서 뽑는다.
-  const flushPara = () => {
-    if (para.length) out.push({ type: 'p', text: para.map((l) => l.text).join('\n') })
-    para = []
-  }
-  const flushTable = () => {
-    if (!table.length) {
-      return
-    }
-    // 표 바로 앞의 짧은 줄이 열 제목이면 머리행으로 끌어올린다.
-    let header = null
-    if (para.length) {
-      const last = para[para.length - 1]
-      if (last.cells.length >= 2 && amountCount(last.cells) === 0 && last.text.length <= 60 && HEADER_HINT.test(last.text)) {
-        header = last.cells
-        para.pop()
-      }
-    }
-    flushPara()
-    const width = Math.max(...table.map((r) => r.length))
-
-    // "구 분" 처럼 글자 사이 공백이 있는 머리행은 여러 셀로 갈린다.
-    // 데이터 열 수보다 많으면 앞쪽 여분을 하나로 합쳐 열을 맞춘다.
-    let head = header
-    if (head && head.length > width) {
-      const extra = head.length - width
-      head = [head.slice(0, extra + 1).join(' ').replace(/\s+/g, ' ').trim(), ...head.slice(extra + 1)]
-    }
-
-    out.push({
-      type: 'table',
-      header: head,
-      rows: table.map((r) => [...r, ...Array(Math.max(0, width - r.length)).fill('')]),
-    })
-    table = []
-  }
-
-  for (const line of lines) {
-    const isRow = line.cells.length >= 2 && amountCount(line.cells) >= 2
-    if (isRow) {
-      table.push(normalizeRow(line.cells))
-      continue
-    }
-    if (table.length) flushTable()
-    para.push(line)
-  }
-  flushTable()
-  flushPara()
-  return out
 }

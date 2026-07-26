@@ -16,17 +16,41 @@ import { accumulateCompany, companyView, companyKeyOf, reportIdOf } from './comp
 const CHUNK = 400_000 // Firestore 문서 1MB 한도 대비 여유 있게
 const COL = 'companies'
 
+/**
+ * Firestore 는 undefined 와 '배열 안의 배열' 을 거부한다(invalid-argument).
+ * 저장 직전에 한 번 걸러 준다 — 중첩 배열은 JSON 문자열로 눕힌다.
+ */
+function sanitize(value, depth = 0, inArray = false) {
+  if (value === undefined) return undefined
+  if (value === null) return null
+  if (Array.isArray(value)) {
+    if (inArray) return JSON.stringify(value) // 배열 안의 배열
+    return value.map((v) => sanitize(v, depth + 1, true)).filter((v) => v !== undefined)
+  }
+  if (value instanceof Date) return value
+  if (typeof value === 'object') {
+    const out = {}
+    for (const [k, v] of Object.entries(value)) {
+      const s = sanitize(v, depth + 1, false)
+      if (s !== undefined) out[k] = s
+    }
+    return out
+  }
+  if (typeof value === 'number' && !Number.isFinite(value)) return null
+  return value
+}
+
 /** 목록·추이 계산에 쓰는 가벼운 요약(본문 제외) */
 function toSummary(report) {
   const { rawText, blocks, notes, sections, ...rest } = report
-  return {
+  return sanitize({
     ...rest,
     notesIndex: (notes?.items || []).map((n) => ({ no: n.no, title: n.title, page: n.page, length: n.body?.length || 0 })),
     notesCount: notes?.count || 0,
     notesFound: Boolean(notes?.found),
     sectionsIndex: (sections || []).map((s) => ({ key: s.key, label: s.label, length: s.text?.length || 0 })),
     hasContent: true,
-  }
+  })
 }
 
 function contentParts(report) {
@@ -154,8 +178,12 @@ export async function listCompanies() {
     }
   }
   const local = await listLocalCompanies()
-  const seen = new Set(cloud.map((c) => c.key))
-  const merged = [...cloud, ...local.filter((c) => !seen.has(c.key))]
+  const byKey = new Map()
+  for (const c of [...cloud, ...local]) {
+    const prev = byKey.get(c.key)
+    if (!prev || (c.updatedAt || 0) > (prev.updatedAt || 0)) byKey.set(c.key, c)
+  }
+  const merged = [...byKey.values()]
   const companies = merged
     .map((c) => companyView(c))
     .sort((a, b) => (b.uploadedAt || 0) - (a.uploadedAt || 0))
@@ -175,8 +203,14 @@ export async function loadCompanyReports(companyKey) {
     }
   }
   const local = await listLocalReports(companyKey)
-  const seen = new Set(cloud.map((r) => r.id))
-  const reports = [...cloud, ...local.filter((r) => !seen.has(r.id))].sort(
+  // 같은 보고서가 양쪽에 있으면 더 나중에 저장된 쪽을 쓴다.
+  // (클라우드 쓰기가 막혀 로컬에만 최신본이 남는 경우가 있다)
+  const merged = new Map()
+  for (const r of [...cloud, ...local]) {
+    const prev = merged.get(r.id)
+    if (!prev || (r.storedAt || 0) > (prev.storedAt || 0)) merged.set(r.id, r)
+  }
+  const reports = [...merged.values()].sort(
     (a, b) =>
       (b.meta?.fiscalYear || 0) - (a.meta?.fiscalYear || 0) ||
       (PERIOD_RANK[b.meta?.periodType] ?? 0) - (PERIOD_RANK[a.meta?.periodType] ?? 0) ||
@@ -210,7 +244,7 @@ async function saveToFirestore(report, ck, rid) {
   await runTransaction(db, async (txn) => {
     const snap = await txn.get(companyDoc(ck))
     const next = accumulateCompany(snap.exists() ? snap.data() : null, report)
-    txn.set(companyDoc(ck), { ...next, storage: 'firestore' })
+    txn.set(companyDoc(ck), sanitize({ ...next, storage: 'firestore' }))
   })
 
   await setDoc(reportDoc(ck, rid), { ...toSummary(report), storedAt: Date.now(), storage: 'firestore' })

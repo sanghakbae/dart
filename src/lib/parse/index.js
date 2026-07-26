@@ -3,6 +3,7 @@ import { parseMeta } from './meta.js'
 import { parseNarrative } from './opinion.js'
 import { parseStatements } from './statements.js'
 import { parseNotes } from './notes.js'
+import { parseShares } from './shares.js'
 import { computeRatios, buildInsights } from '../analyze/ratios.js'
 import { companyKeyOf, reportIdOf } from '../company.js'
 
@@ -42,6 +43,9 @@ export async function analyzeFile(file, onProgress) {
   onProgress?.(0.9, '주석 분리 중')
   const notes = parseNotes(doc)
 
+  onProgress?.(0.93, '주주·주식 정보 정리 중')
+  const shares = parseShares(doc, notes)
+
   onProgress?.(0.95, '재무비율 계산 중')
   const ratios = computeRatios(statements.values)
   const insights = buildInsights(statements.values, ratios)
@@ -65,6 +69,7 @@ export async function analyzeFile(file, onProgress) {
     periods: statements.periods,
     values: statements.values,
     blocks: statements.blocks.map(serializeBlock),
+    shares,
     ratios,
     insights,
     quality,

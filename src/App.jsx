@@ -11,6 +11,8 @@ import OpinionTab from './components/tabs/OpinionTab'
 import StatementsTab from './components/tabs/StatementsTab'
 import TrendTab from './components/tabs/TrendTab'
 import RatioTab from './components/tabs/RatioTab'
+import ValuationTab from './components/tabs/ValuationTab'
+import ChecklistTab from './components/tabs/ChecklistTab'
 import NotesTab from './components/tabs/NotesTab'
 import RawTab from './components/tabs/RawTab'
 import { fileSize } from './lib/format'
@@ -21,6 +23,8 @@ const TABS = [
   { key: 'statements', label: '재무제표' },
   { key: 'trend', label: '추이' },
   { key: 'ratio', label: '재무비율' },
+  { key: 'valuation', label: '기업가치' },
+  { key: 'checklist', label: '점검' },
   { key: 'notes', label: '주석' },
   { key: 'raw', label: '원문' },
 ]
@@ -337,6 +341,10 @@ export default function App() {
                     />
                   )}
                   {tab === 'ratio' && <RatioTab report={mergedActive} timeline={timeline} />}
+                  {tab === 'valuation' && <ValuationTab report={mergedActive} timeline={timeline} />}
+                  {tab === 'checklist' && (
+                    <ChecklistTab report={mergedActive} timeline={timeline} notes={activeContent?.notes} loading={contentLoading} />
+                  )}
                   {tab === 'notes' && <NotesTab report={mergedActive} notes={activeContent?.notes} loading={contentLoading} />}
                   {tab === 'raw' && <RawTab report={mergedActive} rawText={activeContent?.rawText} loading={contentLoading} onDownload={downloadRaw} />}
                 </div>

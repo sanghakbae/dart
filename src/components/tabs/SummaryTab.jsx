@@ -1,8 +1,8 @@
-import { Card, Tile, Badge, Insight, Callout, KV, FinTable, Empty } from '../ui'
+import { Card, Tile, Badge, Insight, Callout, KV, FinTable, Empty, Disclose, NoteBody } from '../ui'
 import { AmountTrend, GrowthBars, StructureStack, ProfitWaterfall, CompositionDonut, SERIES } from '../charts'
 import { headlineTiles, growthRows, waterfallSteps, assetSlices } from '../../lib/analyze/view'
 import { seriesFor } from '../../lib/analyze/series'
-import { full, dateText, fileSize, signedPct } from '../../lib/format'
+import { full, abbrev, dateText, fileSize, signedPct, pctText } from '../../lib/format'
 
 export default function SummaryTab({ report, timeline }) {
   const { meta, values, opinion, insights, quality, periods } = report
@@ -85,6 +85,8 @@ export default function SummaryTab({ report, timeline }) {
         )}
       </section>
 
+      <ShareCard shares={report.shares} notes={report.notes} curLabel={curLabel} />
+
       {insights?.length > 0 && (
         <Card title="자동 판독" sub="숫자에서 바로 확인되는 사실만 정리했습니다">
           {insights.map((i, idx) => (
@@ -140,5 +142,108 @@ export default function SummaryTab({ report, timeline }) {
         />
       </Card>
     </div>
+  )
+}
+
+
+/** 주석 번호로 표 구조가 살아 있는 본문 블록을 찾는다. */
+function noteContentOf(notes, no) {
+  const hit = (notes?.items || []).find((n) => n.no === no)
+  return hit?.content || null
+}
+
+/**
+ * 주주 · 주식 정보. 감사보고서는 지분 현황을 표로 싣지 않고 주석에 흩어 놓으므로,
+ * 뽑아낸 수치와 함께 근거가 된 주석 본문을 그대로 붙여 둔다.
+ */
+function ShareCard({ shares, notes, curLabel }) {
+  if (!shares?.found) return null
+  const { majorShareholder: major, executives = [], sourceNotes = [] } = shares
+
+  return (
+    <Card
+      title={`주주 · 주식 · ${curLabel}`}
+      sub="주석에서 추출한 지분 정보"
+      right={
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {shares.hasStockOption && <Badge tone="info">주식선택권</Badge>}
+          {shares.hasPreferred && <Badge tone="muted">종류주식</Badge>}
+        </div>
+      }
+    >
+      <div className="grid grid-tiles">
+        {major && (
+          <Tile
+            label="최대주주"
+            value={major.name}
+            unit={major.shares != null ? `${full(major.shares)}주` : undefined}
+            hint={major.raw}
+          />
+        )}
+        {major?.ratio != null && <Tile label="최대주주 지분율" value={pctText(major.ratio)} />}
+        {shares.issuedShares != null && (
+          <Tile
+            label="발행주식수"
+            value={abbrev(shares.issuedShares)}
+            unit={`${full(shares.issuedShares)}주`}
+            delta={
+              shares.issuedSharesPrior
+                ? ((shares.issuedShares - shares.issuedSharesPrior) / shares.issuedSharesPrior) * 100
+                : null
+            }
+            deltaLabel="vs 전기"
+          />
+        )}
+        {shares.authorizedShares != null && (
+          <Tile label="수권주식수" value={abbrev(shares.authorizedShares)} unit={`${full(shares.authorizedShares)}주`} />
+        )}
+        {shares.treasuryShares != null && (
+          <Tile label="자기주식" value={abbrev(shares.treasuryShares)} unit={`${full(shares.treasuryShares)}주`} />
+        )}
+      </div>
+
+      {executives.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <h4 style={{ fontSize: 13.5, marginBottom: 8 }}>임원 보유 주식</h4>
+          <FinTable
+            columns={[
+              { key: 'role', label: '직위' },
+              { key: 'shares', label: '보유 주식수' },
+              { key: 'ratio', label: '지분율', render: (v) => (v == null ? '-' : pctText(v)) },
+            ]}
+            rows={executives.map((e) => ({
+              label: e.name,
+              level: 1,
+              values: { role: e.role || '-', shares: e.shares, ratio: e.ratio },
+            }))}
+            note="주석 본문에서 인식한 내용입니다. 감사보고서에 임원별 지분 표가 없으면 대표이사 등 언급된 인물만 나옵니다."
+          />
+        </div>
+      )}
+
+      {shares.shareholders?.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <h4 style={{ fontSize: 13.5, marginBottom: 8 }}>주주 구성</h4>
+          <FinTable
+            columns={[
+              { key: 'shares', label: '주식수' },
+              { key: 'ratio', label: '지분율', render: (v) => (v == null ? '-' : pctText(v)) },
+            ]}
+            rows={shares.shareholders.map((s) => ({ label: s.name, level: 1, values: { shares: s.shares, ratio: s.ratio } }))}
+          />
+        </div>
+      )}
+
+      {sourceNotes.length > 0 && (
+        <div style={{ marginTop: 16, borderTop: '1px solid var(--border)' }}>
+          {sourceNotes.map((n) => (
+            <Disclose key={n.no} summary={`근거 주석 ${n.no}. ${n.title}`} count={`${(n.body || '').length.toLocaleString('ko-KR')}자${n.page ? ` · ${n.page}p` : ''}`}>
+              {/* 표 구조는 주석 데이터에서 번호로 찾아 쓴다(요약 문서에는 중첩 배열을 담지 않는다) */}
+              <NoteBody content={noteContentOf(notes, n.no)} body={n.body} muted />
+            </Disclose>
+          ))}
+        </div>
+      )}
+    </Card>
   )
 }

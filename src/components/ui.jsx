@@ -168,7 +168,18 @@ export function NoteBody({ content, body, muted }) {
   return (
     <div className="notebody">
       {blocks.map((b, i) =>
-        b.type === 'table' ? (
+        b.type === 'toc' ? (
+          // 목차는 "제목 ....... 쪽" 이라 문단으로 흘리면 점선만 남는다. 두 칸으로 정렬한다.
+          <ul className="toc" key={i}>
+            {b.rows.map((r, ri) => (
+              <li key={ri}>
+                <span className="toc-title">{r.title}</span>
+                <span className="toc-dots" aria-hidden="true" />
+                <span className="toc-page">{r.page}</span>
+              </li>
+            ))}
+          </ul>
+        ) : b.type === 'table' ? (
           <div className="tscroll" key={i}>
             <table className="fin note">
               {b.header && (
