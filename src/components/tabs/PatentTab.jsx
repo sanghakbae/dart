@@ -104,10 +104,10 @@ export default function PatentTab({ report }) {
         <div className="stack">
           {error && <Callout tone="warn">새로 받아오지 못해 저장된 값을 보여줍니다. ({error})</Callout>}
           <div className="grid grid-tiles">
-            <Tile label="전체" value={data.total} unit="건" />
-            <Tile label="등록" value={stats.registered} unit="건" tone="good" />
-            <Tile label="출원·공개" value={stats.pending} unit="건" />
-            {stats.years[0] && <Tile label={`${stats.years[0][0]}년 출원`} value={stats.years[0][1]} unit="건" />}
+            <Tile label="전체" value={data.total} suffix="건" />
+            <Tile label="등록" value={stats.registered} suffix="건" tone="good" />
+            <Tile label="출원·공개" value={stats.pending} suffix="건" />
+            {stats.years[0] && <Tile label={`${stats.years[0][0]}년 출원`} value={stats.years[0][1]} suffix="건" />}
           </div>
           {data.returned < data.total && (
             <Callout>

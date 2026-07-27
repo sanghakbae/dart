@@ -131,7 +131,7 @@ export default function FundingTab({ report }) {
 
           <div className="grid grid-tiles">
             <Tile label="누적 조달" value={totalRaised || null} unit={totalRaised ? `${full(totalRaised)}원` : undefined} />
-            <Tile label="조달 건수" value={rounds.length} unit="건" />
+            <Tile label="조달 건수" value={rounds.length} suffix="건" />
             {valuation && (
               <>
                 <Tile
