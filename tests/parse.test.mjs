@@ -5,6 +5,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { htmlifyDartCells } from '../src/lib/extract/html.js'
 
 import { parseAmount, detectUnit } from '../src/lib/parse/numbers.js'
 import { parseMeta } from '../src/lib/parse/meta.js'
@@ -630,3 +631,34 @@ test('본문 블록 — 목차는 정렬용 블록으로 분리한다', () => {
 function round(n, d) {
   return n == null ? null : Number(n.toFixed(d))
 }
+
+// ── DART 원문의 표 셀 태그 ─────────────────────────────────────
+//
+// DART 원문(dart4.xsd)은 <TD> 대신 <TE>·<TU> 를 쓴다. HTML 파서는 모르는 태그를
+// <table> 밖으로 밀어내므로(foster parenting), 바꾸지 않으면 한 <TR> 의
+// 계정과목·당기·전기가 각각 다른 행으로 흩어져 전기 금액이 통째로 사라진다.
+// (무하유 2024년 감사보고서 실제 증상: 33개 계정 중 전기 인식 1개)
+
+test('DART 셀 태그 — TE 를 td 로 바꾸고 속성은 살린다', () => {
+  const out = htmlifyDartCells('<TR><TE ALIGN="RIGHT" ADELIM="2" WIDTH="111">21,552,026,955</TE></TR>')
+  assert.equal(out, '<TR><td ALIGN="RIGHT" ADELIM="2" WIDTH="111">21,552,026,955</td></TR>')
+})
+
+test('DART 셀 태그 — TU 도 바꾼다', () => {
+  assert.equal(htmlifyDartCells('<TU WIDTH="80">(단위 : 원)</TU>'), '<td WIDTH="80">(단위 : 원)</td>')
+})
+
+test('DART 셀 태그 — colspan/rowspan 이 보존된다', () => {
+  const out = htmlifyDartCells('<TE COLSPAN="2" ROWSPAN="3">자 산</TE>')
+  assert.match(out, /^<td COLSPAN="2" ROWSPAN="3">/)
+})
+
+test('DART 셀 태그 — 표준 TD·TH 와 다른 태그는 건드리지 않는다', () => {
+  const src = '<TD>가</TD><TH>나</TH><TEXT>다</TEXT><TERM>라</TERM>'
+  assert.equal(htmlifyDartCells(src), src)
+})
+
+test('DART 셀 태그 — 빈 셀과 자기닫음 셀도 처리한다', () => {
+  assert.equal(htmlifyDartCells('<TE ADELIM="1"></TE>'), '<td ADELIM="1"></td>')
+  assert.equal(htmlifyDartCells('<TE ADELIM="1"/>'), '<td ADELIM="1"/>')
+})

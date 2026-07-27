@@ -12,7 +12,18 @@ const GROWTH_METRICS = [
   { key: 'totalAssets', label: '자산총계' },
 ]
 
-export default function TrendTab({ timeline, reports, periodGroups = [], periodType, onPeriodType, basisOptions = [], basis, onBasis }) {
+export default function TrendTab({
+  timeline,
+  reports,
+  periodGroups = [],
+  periodType,
+  onPeriodType,
+  basisOptions = [],
+  basis,
+  onBasis,
+  asOfYear = null,
+  laterReports = [],
+}) {
   const [metric, setMetric] = useState('revenue')
   const [group, setGroup] = useState('profitability')
 
@@ -107,6 +118,13 @@ export default function TrendTab({ timeline, reports, periodGroups = [], periodT
             이 회사에는 <strong>{basisOptions.map((o) => `${o.value} ${o.count}건`).join(' · ')}</strong> 이 있습니다.
             연결은 종속회사까지 합산한 수치라 별도와 한 축에서 비교하면 증감이 실제보다 크게 보입니다.
             그래서 섞지 않고 <strong>{basis}</strong> 기준만으로 그렸습니다 — 위에서 바꿀 수 있습니다.
+          </Callout>
+        )}
+        {laterReports.length > 0 && (
+          <Callout tone="warn">
+            지금 <strong>{asOfYear}년 보고서</strong>를 보고 있어 그 뒤 연도는 뺐습니다
+            ({laterReports.map((r) => `${r.meta?.fiscalYear}년`).join(' · ')} 제외).
+            감사의견·주석·원문과 같은 시점을 보도록 맞춘 것입니다 — 최신까지 보려면 위에서 최근 보고서를 고르세요.
           </Callout>
         )}
         <Callout>

@@ -1,8 +1,25 @@
 // DART 뷰어에서 저장한 HTML 공시 원문 처리.
 // <table> 태그가 살아 있어 rowspan/colspan 만 펼치면 표 구조를 그대로 얻는다.
 
+/**
+ * DART 원문(dart4.xsd)은 표 셀에 <TD> 말고 <TE>·<TU> 를 쓴다.
+ *
+ * HTML 파서는 이 태그를 모르고, 모르는 요소가 <table> 안에 있으면 표 밖으로
+ * 밀어낸다(foster parenting). 그러면 <TR> 하나에 들어 있던 계정과목·당기·전기가
+ * 각각 별개의 행으로 흩어져, 표를 읽어도 전기 금액이 통째로 사라진다
+ * (무하유 2024년 감사보고서: 33개 계정 중 전기 인식 1개).
+ * DOMParser 에 넣기 전에 표준 셀로 바꿔 준다 — colspan/rowspan 은 그대로 살린다.
+ */
+const DART_CELL = /<(\/?)(TE|TU)\b([^>]*?)(\/?)>/gi
+
+export function htmlifyDartCells(raw) {
+  return raw.replace(DART_CELL, (_m, slash, _tag, attrs, selfClose) =>
+    slash ? '</td>' : `<td${attrs}${selfClose}>`
+  )
+}
+
 export async function extractHtml(file) {
-  const raw = await readAsText(file)
+  const raw = htmlifyDartCells(await readAsText(file))
   const doc = new DOMParser().parseFromString(raw, 'text/html')
 
   doc.querySelectorAll('script, style, noscript').forEach((n) => n.remove())

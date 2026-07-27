@@ -291,9 +291,14 @@ export default function App() {
 
   // 추이는 같은 보고기간 종류끼리만 하나의 축에 올린다.
   const periodGroups = useMemo(() => splitByPeriodType(reports), [reports])
+  // 고른 것이 없으면 지금 보고 있는 보고서의 보고기간 종류를 따른다.
   const activeGroup = useMemo(
-    () => periodGroups.find((g) => g.type === periodType) || periodGroups[0] || null,
-    [periodGroups, periodType]
+    () =>
+      periodGroups.find((g) => g.type === periodType) ||
+      periodGroups.find((g) => g.type === (active?.meta?.periodType || 'FY')) ||
+      periodGroups[0] ||
+      null,
+    [periodGroups, periodType, active]
   )
   /**
    * 연결과 별도는 합산 범위가 달라 한 축에 섞으면 비교가 성립하지 않는다.
@@ -313,14 +318,35 @@ export default function App() {
       .sort((a, b) => b.count - a.count || (a.value === latestBasis ? -1 : 1))
   }, [activeGroup])
 
-  const activeBasis = useMemo(
-    () => (basisOptions.some((o) => o.value === basis) ? basis : basisOptions[0]?.value || null),
-    [basisOptions, basis]
-  )
+  const activeBasis = useMemo(() => {
+    if (basisOptions.some((o) => o.value === basis)) return basis
+    // 기본값은 지금 보고 있는 보고서의 기준. 연결감사보고서를 골랐는데 별도 추이가
+    // 뜨면 한 화면에서 합산 범위가 다른 숫자를 같이 보게 된다.
+    const own = active?.meta?.basis
+    if (own && basisOptions.some((o) => o.value === own)) return own
+    return basisOptions[0]?.value || null
+  }, [basisOptions, basis, active])
 
-  const trendReports = useMemo(
+  /**
+   * 추이에 쓸 보고서 — 고른 보고서의 사업연도까지만 넣는다.
+   *
+   * 2024년 감사보고서를 골랐는데 2025년 숫자가 같이 뜨면, 화면에 보이는 감사의견·
+   * 주석·원문(2024년)과 그래프·비율·기업가치(2025년 포함)가 서로 다른 시점을 말하게 된다.
+   * 고른 보고서를 기준 시점으로 삼아 그 뒤 연도는 빼고, 그 전 연도는 그대로 누적한다.
+   */
+  const asOfYear = active?.meta?.fiscalYear ?? null
+  const basisReports = useMemo(
     () => (activeGroup?.reports || []).filter((r) => !activeBasis || (r.meta?.basis || '별도') === activeBasis),
     [activeGroup, activeBasis]
+  )
+  const trendReports = useMemo(
+    () => basisReports.filter((r) => asOfYear == null || (r.meta?.fiscalYear ?? asOfYear) <= asOfYear),
+    [basisReports, asOfYear]
+  )
+  /** 기준 시점보다 뒤라서 뺀 보고서 — 조용히 감추지 않고 화면에 알린다. */
+  const laterReports = useMemo(
+    () => basisReports.filter((r) => asOfYear != null && (r.meta?.fiscalYear ?? asOfYear) > asOfYear),
+    [basisReports, asOfYear]
   )
 
   const timeline = useMemo(
@@ -452,6 +478,9 @@ export default function App() {
                         onClick={() => {
                           setActiveId(r.id)
                           setTab('summary')
+                          // 기준 시점이 바뀌었으니 기준·보고기간 선택도 새 보고서를 따라가게 되돌린다.
+                          setBasis(null)
+                          setPeriodType(null)
                         }}
                       >
                         <span className="t">
@@ -494,6 +523,8 @@ export default function App() {
                       basisOptions={basisOptions}
                       basis={activeBasis}
                       onBasis={setBasis}
+                      asOfYear={asOfYear}
+                      laterReports={laterReports}
                     />
                   )}
                   {tab === 'ratio' && <RatioTab report={mergedActive} timeline={timeline} />}
