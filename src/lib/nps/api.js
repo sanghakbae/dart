@@ -24,34 +24,6 @@ export function fetchEmployment(name, bizNo, months = 24) {
   return getJson(`/api/nps/timeline?${q}`)
 }
 
-/** 사업연도별 평균 인원 — 인당 매출·인당 인건비 계산에 쓴다. */
-export function yearlyAverages(months = []) {
-  const byYear = new Map()
-  for (const m of months) {
-    const y = Number(String(m.ym).slice(0, 4))
-    if (!Number.isFinite(y) || m.headcount == null) continue
-    const g = byYear.get(y) || { year: y, sum: 0, n: 0, joined: 0, left: 0 }
-    g.sum += m.headcount
-    g.n += 1
-    g.joined += m.joined ?? 0
-    g.left += m.left ?? 0
-    byYear.set(y, g)
-  }
-  return [...byYear.values()]
-    .map((g) => ({ year: g.year, avgHeadcount: g.sum / g.n, monthCount: g.n, joined: g.joined, left: g.left }))
-    .sort((a, b) => a.year - b.year)
-}
-
-/**
- * 연간 퇴사율 = 최근 12개월 퇴사자 합 ÷ 같은 기간 평균 인원.
- * (혁신의숲과 같은 산식 — 무하유 25.6% 로 대조 확인했다)
- */
-export function turnoverRate(months = []) {
-  const last = months.slice(-12)
-  if (last.length < 2) return null
-  const counts = last.map((m) => m.headcount).filter((v) => v != null)
-  if (!counts.length) return null
-  const avg = counts.reduce((a, b) => a + b, 0) / counts.length
-  const left = last.reduce((a, m) => a + (m.left ?? 0), 0)
-  return avg ? { rate: (left / avg) * 100, left, avg, months: last.length } : null
-}
+// 계산은 stats.js 에 있다(네트워크 없이 테스트할 수 있게 분리). 쓰던 곳이 그대로
+// 이 모듈에서 가져다 쓰도록 다시 내보낸다.
+export { yearlyAverages, turnoverRate, periodSummary } from './stats.js'

@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { Card, Tile, Callout, Badge, Seg } from '../ui'
 import { RemoteBar, RemoteEmpty } from '../RemoteBar'
-import { fetchEmployment, yearlyAverages, turnoverRate } from '../../lib/nps/api'
+import { fetchEmployment, yearlyAverages, turnoverRate, periodSummary } from '../../lib/nps/api'
 import { loadEmployment, saveEmployment } from '../../lib/storage'
 import { hasProxy } from '../../lib/proxyBase.js'
 import { abbrev, full } from '../../lib/format'
@@ -44,6 +44,7 @@ export default function EmploymentTab({ report, timeline }) {
 
   const years = useMemo(() => yearlyAverages(months), [months])
   const turnover = useMemo(() => turnoverRate(months), [months])
+  const period = useMemo(() => periodSummary(months), [months])
   const latest = months[months.length - 1] || null
 
   // 인당 매출·인당 인건비 — 연도별 평균 인원으로 나눈다.
@@ -108,30 +109,46 @@ export default function EmploymentTab({ report, timeline }) {
               받아왔지만 DB 에 저장하지 못했습니다. 화면을 다시 열면 사라집니다. ({warning})
             </Callout>
           )}
+          {/* KPI 도 고른 기간을 따른다. 입사·퇴사를 최신 한 달치로만 두면
+              기간을 바꿔도 숫자가 그대로라 무엇을 보고 있는지 알 수 없다. */}
           <div className="grid grid-tiles">
-            <Tile label={`${latest.ym} 인원`} value={latest.headcount} suffix="명" />
-            <Tile label="입사" value={latest.joined} suffix="명" />
-            <Tile label="퇴사" value={latest.left} suffix="명" />
+            <Tile
+              label={`${latest.ym} 인원`}
+              value={latest.headcount}
+              suffix="명"
+              delta={
+                period?.headcountFrom && period.headcountTo != null && period.months > 1
+                  ? ((period.headcountTo - period.headcountFrom) / period.headcountFrom) * 100
+                  : null
+              }
+              deltaLabel={period?.months > 1 ? `${period.from} 대비` : undefined}
+            />
+            <Tile label="입사" value={period?.joined} suffix="명" unit={`${period?.months}개월 누계`} />
+            <Tile label="퇴사" value={period?.left} suffix="명" unit={`${period?.months}개월 누계`} />
             {turnover && (
               <Tile
                 label="연간 퇴사율"
                 value={`${turnover.rate.toFixed(1)}%`}
-                unit={`최근 ${turnover.months}개월 퇴사 ${turnover.left}명`}
+                unit={
+                  turnover.months === 12
+                    ? `12개월 퇴사 ${turnover.left}명`
+                    : `${turnover.months}개월 퇴사 ${turnover.left}명 · 연율 환산`
+                }
                 tone={turnover.rate >= 25 ? 'warn' : undefined}
               />
             )}
-            {latest.avgMonthlyWage && (
+            {period?.avgMonthlyWage && (
               <>
                 <Tile
                   label="평균 기준소득월액"
-                  value={abbrev(latest.avgMonthlyWage)}
-                  unit={`${full(latest.avgMonthlyWage)}원 · 상한 적용`}
+                  value={abbrev(period.avgMonthlyWage)}
+                  unit={`${full(period.avgMonthlyWage)}원 · ${period.months}개월 평균 · 상한 적용`}
                 />
                 {/* 연봉 감각으로 바로 읽히도록 12개월분을 옆에 같이 둔다. */}
                 <Tile
                   label="연 환산"
-                  value={abbrev(latest.avgMonthlyWage * 12)}
-                  unit={`${full(latest.avgMonthlyWage * 12)}원 · 월액 × 12`}
+                  value={abbrev(period.avgMonthlyWage * 12)}
+                  unit={`${full(period.avgMonthlyWage * 12)}원 · 월액 × 12`}
                 />
               </>
             )}
@@ -165,10 +182,11 @@ export default function EmploymentTab({ report, timeline }) {
 
           <Callout>
             {data.note}
-            {latest.avgMonthlyWage && (
+            {period?.avgMonthlyWage && (
               <>
                 {' '}
-                <strong>평균 기준소득월액</strong>은 국민연금 고지금액을 인원과 보험료율(9%)로 역산한 값입니다.
+                <strong>평균 기준소득월액</strong>은 국민연금 고지금액을 인원과 보험료율(9%)로 역산한{' '}
+                {period.months}개월 평균입니다.
                 상한(2025.7~ 637만원)이 있어 고소득자가 많으면 실제보다 낮게 나옵니다.
               </>
             )}

@@ -315,3 +315,40 @@ test('최대주주 — 우선주를 못 가려내면 기준을 단정하지 않�
   assert.equal(s.majorShareholder.statedBasis, null)
   assert.equal(s.preferredShares, null)
 })
+
+// ── 고용 KPI ─────────────────────────────────────────────────
+// 기간을 바꿔도 KPI 가 그대로면 무엇을 보고 있는지 알 수 없다.
+const MONTHS = Array.from({ length: 24 }, (_, i) => ({
+  ym: `20${24 + Math.floor((6 + i) / 12)}-${String(((6 + i) % 12) + 1).padStart(2, '0')}`,
+  headcount: 100 + i,
+  joined: 2,
+  left: 1,
+  avgMonthlyWage: 4_000_000 + i * 10_000,
+}))
+
+test('고용 — 기간 합계와 평균이 고른 개월 수를 따른다', async () => {
+  const { periodSummary } = await import('../src/lib/nps/stats.js')
+  const one = periodSummary(MONTHS.slice(-12))
+  const two = periodSummary(MONTHS)
+  assert.equal(one.months, 12)
+  assert.equal(one.joined, 24)
+  assert.equal(two.months, 24)
+  assert.equal(two.joined, 48)
+  assert.notEqual(one.avgMonthlyWage, two.avgMonthlyWage)
+})
+
+test('고용 — 퇴사율은 기간이 달라도 연율로 견줄 수 있다', async () => {
+  const { turnoverRate } = await import('../src/lib/nps/stats.js')
+  const one = turnoverRate(MONTHS.slice(-12))
+  const two = turnoverRate(MONTHS)
+  // 매달 같은 비율로 나가므로 연율은 거의 같아야 한다(인원이 늘어 소폭 낮아진다)
+  assert.ok(Math.abs(one.rate - two.rate) < 3, `${one.rate} vs ${two.rate}`)
+  assert.equal(two.months, 24)
+})
+
+test('고용 — 12개월이면 예전 산식과 같은 값', async () => {
+  const { turnoverRate } = await import('../src/lib/nps/stats.js')
+  const flat = Array.from({ length: 12 }, (_, i) => ({ ym: `2025-${String(i + 1).padStart(2, '0')}`, headcount: 100, left: 2 }))
+  // 24명 ÷ 100명 = 24.0%
+  assert.equal(turnoverRate(flat).rate, 24)
+})
