@@ -486,6 +486,14 @@ main { padding-bottom: 64px; }
 .chip-filter.active { box-shadow: 0 0 0 2px var(--text-1); font-weight: 700; }
 .chip-filter:disabled { opacity: 0.4; cursor: default; }
 
+/* ── 연도별 막대 (표보다 흐름이 바로 보인다) ──────────── */
+.yearbars { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.yearbars li { display: grid; grid-template-columns: 4em 1fr 3em; align-items: center; gap: 10px; }
+.yb-y { font-size: 13.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.yb-track { height: 14px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+.yb-track i { display: block; height: 100%; background: var(--series-1); border-radius: 3px; }
+.yb-n { font-size: 14px; font-weight: 650; text-align: right; font-variant-numeric: tabular-nums; }
+
 /* ── 외부 API 상태 칩 ─────────────────────────────────── */
 .api-health { display: flex; gap: 5px; flex-wrap: nowrap; cursor: pointer; }
 .api-health .badge { flex: none; }

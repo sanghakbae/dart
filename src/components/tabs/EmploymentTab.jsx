@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Card, Tile, Empty, Callout, Badge } from '../ui'
+import { useCallback, useMemo } from 'react'
+import { Card, Tile, Callout, Badge } from '../ui'
+import { RemoteBar, RemoteEmpty } from '../RemoteBar'
 import { fetchEmployment, yearlyAverages, turnoverRate } from '../../lib/nps/api'
 import { loadEmployment, saveEmployment } from '../../lib/storage'
 import { hasProxy } from '../../lib/proxyBase.js'
-import { abbrev, full, dateTimeText } from '../../lib/format'
+import { abbrev, full } from '../../lib/format'
+import { useCachedRemote } from '../../lib/useCachedRemote'
 import { HeadcountChart } from '../charts'
 
 /**
@@ -14,64 +16,18 @@ import { HeadcountChart } from '../charts'
  * 둘을 같이 보여주고 차이를 밝힌다.
  */
 export default function EmploymentTab({ report, timeline }) {
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [fetchedAt, setFetchedAt] = useState(null)
-  const [refreshing, setRefreshing] = useState(false)
-  const [reloadKey, setReloadKey] = useState(0)
-
   const company = report?.meta?.company
   const bizNo = report?.meta?.bizNo || null
   const companyKey = report?.companyKey || null
 
-  /**
-   * DB 우선. 하루가 지났거나 캐시가 없을 때만 국민연금 API 를 부른다.
-   * (한 회사 조회에 상류 호출이 여러 번 들어가고 개발계정은 일 1,000건 한도다)
-   */
-  useEffect(() => {
-    if (!company) return
-    let alive = true
-    setLoading(true)
-    setError(null)
-
-    const pull = async (force) => {
-      const cached = force ? null : await loadEmployment(companyKey)
-      if (cached && !cached.stale) return { payload: cached, from: 'db' }
-
-      try {
-        const fresh = await fetchEmployment(company, bizNo)
-        const saved = await saveEmployment(companyKey, { ...fresh, name: company, bizNo })
-        return { payload: { ...fresh, fetchedAt: Date.now() }, from: 'api', warning: saved.warning }
-      } catch (e) {
-        // 새로 받는 데 실패하면 오래된 캐시라도 보여준다.
-        if (cached) return { payload: cached, from: 'db-stale', warning: e.message }
-        throw e
-      }
-    }
-
-    pull(reloadKey > 0)
-      .then(({ payload, warning }) => {
-        if (!alive) return
-        setData(payload)
-        setFetchedAt(payload.fetchedAt || null)
-        if (warning) setError(warning)
-      })
-      .catch((e) => alive && setError(e.message))
-      .finally(() => {
-        if (!alive) return
-        setLoading(false)
-        setRefreshing(false)
-      })
-    return () => {
-      alive = false
-    }
-  }, [company, bizNo, companyKey, reloadKey])
-
-  const refresh = () => {
-    setRefreshing(true)
-    setReloadKey((k) => k + 1)
-  }
+  // 자동으로 받지 않는다. 한 회사 조회에 상류를 25회 안팎 두드리고 10초 가까이 걸린다.
+  const { data, fetchedAt, stale, loading, fetching, error, fetchNow } = useCachedRemote({
+    key: companyKey,
+    load: loadEmployment,
+    save: (k, v) => saveEmployment(k, { ...v, name: company, bizNo }),
+    ready: Boolean(company),
+    fetch: useCallback(() => fetchEmployment(company, bizNo), [company, bizNo]),
+  })
 
   const months = data?.months || []
   const years = useMemo(() => yearlyAverages(months), [months])
@@ -98,43 +54,26 @@ export default function EmploymentTab({ report, timeline }) {
     return out
   }, [years, timeline, report])
 
-  if (loading) return <Card><Empty title="국민연금에서 고용 정보를 불러오는 중입니다…" /></Card>
+  if (loading) return <Card><div className="tnote">저장된 고용 정보를 확인하는 중…</div></Card>
 
-  // 갱신 시각과 다시 받기. DB 캐시를 쓰기 때문에 언제 받은 값인지 밝혀 둔다.
-  const freshness = (
-    <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-      <span className="chip">
-        {fetchedAt ? `${dateTimeText(fetchedAt)} 기준` : '갱신 시각 미확인'}
-      </span>
-      <button className="btn btn-sm btn-ghost" type="button" onClick={refresh} disabled={refreshing}>
-        {refreshing ? '받는 중…' : '지금 다시 받기'}
-      </button>
-    </div>
+  const bar = (
+    <RemoteBar source="국민연금" fetchedAt={fetchedAt} stale={stale} fetching={fetching} onFetch={fetchNow} />
   )
-
-  // 새로 받는 데 실패했어도 예전 캐시가 있으면 그걸 보여주고 경고만 띄운다.
-  if (error && data?.found && months.length) {
-    // 아래 본문을 그대로 렌더하고, 맨 위에 경고를 얹는다.
-  } else if (error) {
-    return (
-      <Card title="고용 현황">
-        <Callout tone="warn">
-          {error}
-          <br />
-          {hasProxy
-            ? '국민연금 인증키(NPS_API_KEY)가 프록시에 설정되어 있어야 합니다. 개발 서버는 .env, 배포본은 Worker 시크릿에서 읽습니다.'
-            : '배포본에는 조회용 프록시 주소가 설정되지 않았습니다. VITE_PROXY_BASE 에 Worker 주소를 넣어 배포하면 동작합니다.'}
-        </Callout>
-      </Card>
-    )
-  }
 
   if (!data?.found || !months.length) {
     return (
-      <Card title="고용 현황" right={freshness}>
-        <Empty title={`${company} 의 국민연금 가입 사업장을 찾지 못했습니다`}>
-          가입자 3인 이상 법인사업장만 공개됩니다. 사업장명이 감사보고서의 회사명과 다를 수 있습니다.
-        </Empty>
+      <Card title="고용 현황" right={fetchedAt ? bar : null}>
+        <RemoteEmpty
+          source="국민연금"
+          title={fetchedAt ? `${company} 의 국민연금 가입 사업장을 찾지 못했습니다` : '아직 받아오지 않았습니다'}
+          fetching={fetching}
+          onFetch={fetchNow}
+          error={error || (!hasProxy ? '배포본에는 조회용 프록시 주소가 설정되지 않았습니다.' : null)}
+        >
+          {fetchedAt
+            ? '가입자 3인 이상 법인사업장만 공개됩니다. 사업장명이 감사보고서의 회사명과 다를 수 있습니다.'
+            : '조회에 10초쯤 걸려 자동으로 받지 않습니다. 한 번 받아오면 DB 에 저장해 두고 씁니다.'}
+        </RemoteEmpty>
       </Card>
     )
   }
@@ -144,12 +83,7 @@ export default function EmploymentTab({ report, timeline }) {
       <Card
         title="고용 현황"
         sub={`${data.workplace.name} · ${months[0].ym} ~ ${latest.ym}`}
-        right={
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-            <Badge tone="muted">국민연금</Badge>
-            {freshness}
-          </div>
-        }
+        right={bar}
       >
         <div className="stack">
           {error && (

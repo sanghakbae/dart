@@ -255,7 +255,8 @@ export async function loadEmployment(companyKey) {
     // 월 데이터가 없는 캐시는 쓸 수 없다. 조회에 실패한 순간이 캐시로 굳으면
     // 하루 동안 "사업장을 찾지 못했습니다" 가 그대로 남는다.
     const empty = !Array.isArray(data.months) || data.months.length === 0
-    return { ...data, stale: empty || Date.now() - (data.fetchedAt || 0) > EMPLOYMENT_TTL }
+    const outdated = data.v !== CACHE_V
+    return { ...data, stale: empty || outdated || Date.now() - (data.fetchedAt || 0) > EMPLOYMENT_TTL }
   } catch {
     return null
   }
@@ -264,7 +265,7 @@ export async function loadEmployment(companyKey) {
 export async function saveEmployment(companyKey, payload) {
   if (!usesFirestore || !companyKey) return { saved: false, warning: null }
   try {
-    await setDoc(employmentDoc(companyKey), sanitize({ ...payload, fetchedAt: Date.now() }))
+    await setDoc(employmentDoc(companyKey), sanitize({ ...payload, v: CACHE_V, fetchedAt: Date.now() }))
     return { saved: true, warning: null }
   } catch (e) {
     return { saved: false, warning: firestoreHint(e) }
@@ -286,7 +287,8 @@ export async function loadFunding(companyKey) {
     const data = snap.data()
     // 빈 결과가 캐시로 굳으면 하루 동안 '공시 없음' 이 그대로 남는다.
     const empty = !Array.isArray(data.rounds) || data.rounds.length === 0
-    return { ...data, stale: empty || Date.now() - (data.fetchedAt || 0) > FUNDING_TTL }
+    const outdated = data.v !== CACHE_V
+    return { ...data, stale: empty || outdated || Date.now() - (data.fetchedAt || 0) > FUNDING_TTL }
   } catch {
     return null
   }
@@ -295,7 +297,7 @@ export async function loadFunding(companyKey) {
 export async function saveFunding(companyKey, payload) {
   if (!usesFirestore || !companyKey) return { saved: false, warning: null }
   try {
-    await setDoc(fundingDoc(companyKey), sanitize({ ...payload, fetchedAt: Date.now() }))
+    await setDoc(fundingDoc(companyKey), sanitize({ ...payload, v: CACHE_V, fetchedAt: Date.now() }))
     return { saved: true, warning: null }
   } catch (e) {
     return { saved: false, warning: firestoreHint(e) }
@@ -303,6 +305,16 @@ export async function saveFunding(companyKey, payload) {
 }
 
 export { FUNDING_TTL }
+
+// ── 외부 조회 캐시 공통 ──────────────────────────────────────
+/**
+ * 캐시 스키마 버전.
+ *
+ * 계산 방식을 고쳐도 하루 동안 옛 값이 그대로 나갔다 — 특허 건수를 정확 일치로
+ * 바꿨는데 화면에는 계속 22,608건이 떴다. 버전이 다르면 캐시를 낡은 것으로 본다.
+ * 저장 형식이나 집계 방식을 바꿀 때마다 올린다.
+ */
+const CACHE_V = 2
 
 // ── 특허 캐시 ────────────────────────────────────────────────
 // KIPRIS 무료 한도가 월 1,000회다. 하루 캐시로 충분히 그 안에 든다.
@@ -316,7 +328,8 @@ export async function loadPatents(companyKey) {
     if (!snap.exists()) return null
     const data = snap.data()
     const empty = !Array.isArray(data.patents) || data.patents.length === 0
-    return { ...data, stale: empty || Date.now() - (data.fetchedAt || 0) > PATENT_TTL }
+    const outdated = data.v !== CACHE_V
+    return { ...data, stale: empty || outdated || Date.now() - (data.fetchedAt || 0) > PATENT_TTL }
   } catch {
     return null
   }
@@ -325,7 +338,7 @@ export async function loadPatents(companyKey) {
 export async function savePatents(companyKey, payload) {
   if (!usesFirestore || !companyKey) return { saved: false, warning: null }
   try {
-    await setDoc(patentDoc(companyKey), sanitize({ ...payload, fetchedAt: Date.now() }))
+    await setDoc(patentDoc(companyKey), sanitize({ ...payload, v: CACHE_V, fetchedAt: Date.now() }))
     return { saved: true, warning: null }
   } catch (e) {
     return { saved: false, warning: firestoreHint(e) }

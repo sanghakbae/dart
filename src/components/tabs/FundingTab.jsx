@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Card, Tile, Empty, Callout, Badge } from '../ui'
+import { useCallback, useMemo } from 'react'
+import { Card, Tile, Callout, Badge } from '../ui'
+import { RemoteBar, RemoteEmpty } from '../RemoteBar'
 import { fetchFundingRounds, latestRoundValuation, roundValuation } from '../../lib/dart/funding'
 import { searchCompanies } from '../../lib/dart/api'
 import { loadFunding, saveFunding } from '../../lib/storage'
 import { hasProxy } from '../../lib/proxyBase.js'
-import { abbrev, full, dateTimeText } from '../../lib/format'
+import { abbrev, full } from '../../lib/format'
+import { useCachedRemote } from '../../lib/useCachedRemote'
 
 /**
  * 자본조달 이력.
@@ -14,65 +16,31 @@ import { abbrev, full, dateTimeText } from '../../lib/format'
  * 비상장사는 투자 공시 의무가 없어 조회되지 않는다.
  */
 export default function FundingTab({ report }) {
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [phase, setPhase] = useState('')
-  const [reloadKey, setReloadKey] = useState(0)
-
   const companyKey = report?.companyKey || null
   const companyName = report?.meta?.company || null
 
-  useEffect(() => {
-    if (!companyKey) return
-    let alive = true
-    setLoading(true)
-    setError(null)
-
-    const pull = async (force) => {
-      const cached = force ? null : await loadFunding(companyKey)
-      if (cached && !cached.stale) return { payload: cached }
-
+  // 자동으로 받지 않는다. 공시마다 원문을 한 번씩 받아야 해서 무겁다.
+  const pull = useCallback(
+    async (onPhase) => {
       // 보고서에는 DART 고유번호가 없다. 회사명으로 기업 색인에서 찾는다.
       // 이름이 정확히 같은 것만 받아들인다 — 부분일치를 쓰면 남의 회사를 물어 온다.
-      setPhase('DART 고유번호 확인 중')
+      onPhase?.('고유번호 확인 중')
       const hits = await searchCompanies(companyName, 40)
       const norm = (x) => String(x || '').replace(/\s+/g, '')
       const hit = hits.find((h) => norm(h.name) === norm(companyName))
-      if (!hit) {
-        if (cached) return { payload: cached }
-        throw new Error(`DART 에서 "${companyName}" 와 이름이 정확히 같은 회사를 찾지 못했습니다.`)
-      }
-      const corpCode = hit.code
+      if (!hit) throw new Error(`DART 에서 "${companyName}" 와 이름이 정확히 같은 회사를 찾지 못했습니다.`)
+      return fetchFundingRounds(hit.code, onPhase)
+    },
+    [companyName]
+  )
 
-      try {
-        const fresh = await fetchFundingRounds(corpCode, (m) => alive && setPhase(m))
-        await saveFunding(companyKey, fresh)
-        return { payload: { ...fresh, fetchedAt: Date.now() } }
-      } catch (e) {
-        if (cached) return { payload: cached, warning: e.message }
-        throw e
-      }
-    }
-
-    pull(reloadKey > 0)
-      .then(({ payload, warning }) => {
-        if (!alive) return
-        setData(payload)
-        if (warning) setError(warning)
-      })
-      .catch((e) => alive && setError(e.message))
-      .finally(() => {
-        if (!alive) return
-        setLoading(false)
-        setPhase('')
-      })
-    return () => {
-      alive = false
-    }
-  }, [companyKey, companyName, reloadKey])
-
-  const refresh = useCallback(() => setReloadKey((k) => k + 1), [])
+  const { data, fetchedAt, stale, loading, fetching, phase, error, fetchNow } = useCachedRemote({
+    key: companyKey,
+    load: loadFunding,
+    save: saveFunding,
+    ready: Boolean(companyName),
+    fetch: pull,
+  })
 
   const rounds = data?.rounds || []
   const valuation = useMemo(() => latestRoundValuation(rounds), [rounds])
@@ -81,50 +49,37 @@ export default function FundingTab({ report }) {
     [rounds]
   )
 
-  if (loading) {
-    return (
-      <Card>
-        <Empty title="DART 에서 자본조달 공시를 읽는 중입니다…">{phase}</Empty>
-      </Card>
-    )
-  }
+  if (loading) return <Card><div className="tnote">저장된 자본조달 정보를 확인하는 중…</div></Card>
 
-  if (error && !rounds.length) {
-    return (
-      <Card title="자본조달">
-        <Callout tone="warn">
-          {error}
-          {!hasProxy && <><br />배포본에는 조회용 프록시 주소가 설정되지 않았습니다.</>}
-        </Callout>
-      </Card>
-    )
-  }
+  const bar = (
+    <RemoteBar source="DART" fetchedAt={fetchedAt} stale={stale} fetching={fetching} phase={phase} onFetch={fetchNow} />
+  )
 
   if (!rounds.length) {
     return (
-      <Card title="자본조달">
-        <Empty title="자본조달 공시가 없습니다">
-          비상장 법인은 투자 유치를 공시할 의무가 없어 DART 에 나타나지 않습니다.
-          감사보고서 주석의 상환전환우선주·자본금 변동으로만 짐작할 수 있습니다.
-        </Empty>
+      <Card title="자본조달" right={fetchedAt ? bar : null}>
+        <RemoteEmpty
+          source="DART"
+          title={fetchedAt ? '자본조달 공시가 없습니다' : '아직 받아오지 않았습니다'}
+          fetching={fetching}
+          phase={phase}
+          onFetch={fetchNow}
+          error={error || (!hasProxy ? '배포본에는 조회용 프록시 주소가 설정되지 않았습니다.' : null)}
+        >
+          {fetchedAt
+            ? '비상장 법인은 투자 유치를 공시할 의무가 없어 DART 에 나타나지 않습니다. 감사보고서 주석의 상환전환우선주·자본금 변동으로만 짐작할 수 있습니다.'
+            : '공시마다 원문을 한 번씩 받아야 해서 자동으로 받지 않습니다. 한 번 받아오면 DB 에 저장해 두고 씁니다.'}
+        </RemoteEmpty>
       </Card>
     )
   }
-
-  const freshness = (
-    <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-      <Badge tone="muted">DART</Badge>
-      <span className="chip">{data?.fetchedAt ? `${dateTimeText(data.fetchedAt)} 기준` : '갱신 시각 미확인'}</span>
-      <button className="btn btn-sm btn-ghost" type="button" onClick={refresh}>다시 받기</button>
-    </div>
-  )
 
   return (
     <div className="stack-lg">
       <Card
         title="자본조달 요약"
         sub={`공시 ${data.total}건 · 해석 ${data.parsed}건 → 조달 ${rounds.length}건`}
-        right={freshness}
+        right={bar}
       >
         <div className="stack">
           {error && <Callout tone="warn">새로 받아오지 못해 저장된 값을 보여줍니다. ({error})</Callout>}

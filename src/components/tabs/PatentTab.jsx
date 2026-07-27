@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Card, Tile, Empty, Callout, Badge } from '../ui'
+import { useCallback, useMemo } from 'react'
+import { Card, Tile, Callout, Badge } from '../ui'
+import { RemoteBar, RemoteEmpty } from '../RemoteBar'
 import { proxyUrl, hasProxy } from '../../lib/proxyBase.js'
 import { loadPatents, savePatents } from '../../lib/storage'
-import { dateTimeText } from '../../lib/format'
+import { useCachedRemote } from '../../lib/useCachedRemote'
 
 /**
  * 특허·실용신안. 감사보고서에는 무형자산 금액만 있고 건수·내용이 없어 KIPRIS 에서 따로 받는다.
@@ -11,45 +12,16 @@ import { dateTimeText } from '../../lib/format'
  * 법인격을 붙여 등록돼 있어, 두 표기를 모두 시도한다.
  */
 export default function PatentTab({ report }) {
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [reloadKey, setReloadKey] = useState(0)
-
   const companyKey = report?.companyKey || null
   const company = report?.meta?.company || null
 
-  useEffect(() => {
-    if (!company) return
-    let alive = true
-    setLoading(true)
-    setError(null)
-
-    const pull = async (force) => {
-      const cached = force ? null : await loadPatents(companyKey)
-      if (cached && !cached.stale) return { payload: cached }
-      try {
-        const fresh = await fetchPatents(company)
-        await savePatents(companyKey, fresh)
-        return { payload: { ...fresh, fetchedAt: Date.now() } }
-      } catch (e) {
-        if (cached) return { payload: cached, warning: e.message }
-        throw e
-      }
-    }
-
-    pull(reloadKey > 0)
-      .then(({ payload, warning }) => {
-        if (!alive) return
-        setData(payload)
-        if (warning) setError(warning)
-      })
-      .catch((e) => alive && setError(e.message))
-      .finally(() => alive && setLoading(false))
-    return () => {
-      alive = false
-    }
-  }, [company, companyKey, reloadKey])
+  const { data, fetchedAt, stale, loading, fetching, error, fetchNow } = useCachedRemote({
+    key: companyKey,
+    load: loadPatents,
+    save: savePatents,
+    ready: Boolean(company),
+    fetch: useCallback(() => fetchPatents(company), [company]),
+  })
 
   const patents = data?.patents || []
 
@@ -61,46 +33,38 @@ export default function PatentTab({ report }) {
       if (Number.isFinite(y)) byYear.set(y, (byYear.get(y) || 0) + 1)
     }
     const years = [...byYear.entries()].sort((a, b) => b[0] - a[0])
-    return { registered, pending: patents.length - registered, years }
+    const max = years.reduce((m, [, n]) => Math.max(m, n), 1)
+    return { registered, pending: patents.length - registered, years, max }
   }, [patents])
 
-  if (loading) return <Card><Empty title="KIPRIS 에서 특허를 불러오는 중입니다…" /></Card>
+  if (loading) return <Card><div className="tnote">저장된 특허 정보를 확인하는 중…</div></Card>
 
-  if (error && !patents.length) {
-    return (
-      <Card title="특허·실용신안">
-        <Callout tone="warn">
-          {error}
-          {!hasProxy && <><br />배포본에는 조회용 프록시 주소가 설정되지 않았습니다.</>}
-        </Callout>
-      </Card>
-    )
-  }
+  const bar = (
+    <RemoteBar source="KIPRIS" fetchedAt={fetchedAt} stale={stale} fetching={fetching} onFetch={fetchNow} />
+  )
 
+  // 자동으로 받지 않는다. 저장된 게 없으면 버튼만 보여 준다.
   if (!patents.length) {
     return (
-      <Card title="특허·실용신안">
-        <Empty title={`${company} 명의의 특허를 찾지 못했습니다`}>
-          출원인명이 정확히 일치해야 조회됩니다. 법인격 표기(주식회사 …)가 다르거나
-          출원인이 개인·관계사 명의일 수 있습니다.
-        </Empty>
+      <Card title="특허·실용신안" right={fetchedAt ? bar : null}>
+        <RemoteEmpty
+          source="KIPRIS"
+          title={fetchedAt ? `${company} 명의의 특허를 찾지 못했습니다` : '아직 받아오지 않았습니다'}
+          fetching={fetching}
+          onFetch={fetchNow}
+          error={error || (!hasProxy ? '배포본에는 조회용 프록시 주소가 설정되지 않았습니다.' : null)}
+        >
+          {fetchedAt
+            ? '출원인명이 정확히 일치해야 조회됩니다. 법인격 표기(주식회사 …)가 다르거나 출원인이 개인·관계사 명의일 수 있습니다.'
+            : 'KIPRIS 무료 한도가 월 1,000건이라 자동으로 받지 않습니다. 한 번 받아오면 DB 에 저장해 두고 씁니다.'}
+        </RemoteEmpty>
       </Card>
     )
   }
-
-  const freshness = (
-    <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-      <Badge tone="muted">KIPRIS</Badge>
-      <span className="chip">{data?.fetchedAt ? `${dateTimeText(data.fetchedAt)} 기준` : '갱신 시각 미확인'}</span>
-      <button className="btn btn-sm btn-ghost" type="button" onClick={() => setReloadKey((k) => k + 1)}>
-        다시 받기
-      </button>
-    </div>
-  )
 
   return (
     <div className="stack-lg">
-      <Card title="특허 현황" sub={`출원인 ${data.applicant}`} right={freshness}>
+      <Card title="특허 현황" sub={`출원인 ${data.applicant}`} right={bar}>
         <div className="stack">
           {error && <Callout tone="warn">새로 받아오지 못해 저장된 값을 보여줍니다. ({error})</Callout>}
           <div className="grid grid-tiles">
@@ -120,19 +84,19 @@ export default function PatentTab({ report }) {
       </Card>
 
       {stats.years.length > 1 && (
-        <Card title="연도별 출원" sub={`${stats.years.length}개 연도`} tight>
-          <div style={{ overflowX: 'auto' }}>
-            <table className="tbl">
-              <thead>
-                <tr><th>연도</th><th className="num">출원 건수</th></tr>
-              </thead>
-              <tbody>
-                {stats.years.map(([y, n]) => (
-                  <tr key={y}><td>{y}년</td><td className="num">{n}</td></tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        <Card title="연도별 출원" sub={`${stats.years[stats.years.length - 1][0]}~${stats.years[0][0]}년`}>
+          {/* 표로 늘어놓으면 아홉 줄을 눈으로 훑어야 한다. 막대 하나로 흐름이 바로 보인다. */}
+          <ul className="yearbars">
+            {[...stats.years].reverse().map(([y, n]) => (
+              <li key={y}>
+                <span className="yb-y">{y}</span>
+                <span className="yb-track">
+                  <i style={{ width: `${Math.max(4, (n / stats.max) * 100)}%` }} />
+                </span>
+                <span className="yb-n">{n}</span>
+              </li>
+            ))}
+          </ul>
         </Card>
       )}
 
@@ -154,8 +118,15 @@ export default function PatentTab({ report }) {
                 <tr key={p.applicationNumber}>
                   <td>{p.applicationDate || '-'}</td>
                   <td><Badge tone={p.registrationNumber ? 'good' : 'muted'}>{p.status || '-'}</Badge></td>
-                  <td className="txt" title={p.abstract} style={{ whiteSpace: 'normal', maxWidth: '32em' }}>
-                    {p.title}
+                  <td className="txt" style={{ whiteSpace: 'normal', maxWidth: '32em' }}>
+                    <a
+                      href={kiprisUrl(p.applicationNumber)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={p.abstract}
+                    >
+                      {p.title}
+                    </a>
                   </td>
                   <td>{p.applicationNumber}</td>
                   <td>{p.registrationNumber || '-'}</td>
@@ -180,4 +151,13 @@ async function fetchPatents(company) {
   const body = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(body?.error || `요청 실패 (${res.status})`)
   return body
+}
+
+/**
+ * KIPRIS 특허 상세. 출원번호로 바로 열린다(하이픈 없는 13자리).
+ * plus.kipris 가 아니라 일반 KIPRIS 쪽이라 로그인 없이 볼 수 있다.
+ */
+function kiprisUrl(applicationNumber) {
+  const n = String(applicationNumber || '').replace(/\D/g, '')
+  return `https://www.kipris.or.kr/khome/search/searchResult.do?queryText=AN%3D${n}`
 }
