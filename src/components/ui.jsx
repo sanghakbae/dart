@@ -45,7 +45,10 @@ export function Badge({ tone = 'muted', children, dot }) {
 export function Tile({ label, value, unit, delta, deltaLabel, hint, tone }) {
   const dir = delta == null ? 'flat' : delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat'
   return (
-    <div className="tile" title={hint || (typeof value === 'number' ? full(value) : undefined)}>
+    <div
+      className={`tile${dir === 'flat' ? '' : ` tile-${dir}`}`}
+      title={hint || (typeof value === 'number' ? full(value) : undefined)}
+    >
       <div className="k">
         {label}
         {tone && <i className="dot" style={{ width: 6, height: 6, borderRadius: '50%', background: toneColor(tone) }} />}

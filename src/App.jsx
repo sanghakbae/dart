@@ -442,14 +442,14 @@ export default function App() {
           </>
         ) : (
           <>
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-              <button className="btn btn-sm btn-ghost" type="button" onClick={closeCompany}>
+            <div className="co-head">
+              <button className="btn btn-back" type="button" onClick={closeCompany}>
                 ‹ 회사 목록
               </button>
-              <strong style={{ fontSize: 18 }}>{company?.name || companyKey}</strong>
+              <strong>{company?.name || companyKey}</strong>
               {active?.opinion && <Badge tone={active.opinion.tone} dot>{active.opinion.label}</Badge>}
               {active && (
-                <span style={{ color: 'var(--text-3)', fontSize: 14 }}>
+                <span className="co-head-meta">
                   {active.meta?.basis} · {active.meta?.docKind} · {active.meta?.fileName} ({fileSize(active.meta?.fileSize)})
                 </span>
               )}

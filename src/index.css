@@ -203,7 +203,17 @@ main { padding-bottom: 64px; }
   gap: 3px;
   min-width: 0;
 }
-.tile .k { font-size: 14.5px; color: var(--text-3); display: flex; align-items: center; gap: 6px; }
+/* 증감 방향을 배경에도 얹는다. ▲▼ 기호·부호와 겹치는 보조 신호라 색이 안 보여도
+   뜻은 그대로 읽힌다. surface-1 에 섞어 두 테마 모두에서 글자 대비를 지킨다. */
+.tile-up {
+  background: linear-gradient(158deg, color-mix(in srgb, var(--good-text) 14%, var(--surface-1)), var(--surface-1) 68%);
+  border-color: color-mix(in srgb, var(--good-text) 26%, var(--border));
+}
+.tile-down {
+  background: linear-gradient(158deg, color-mix(in srgb, var(--critical) 14%, var(--surface-1)), var(--surface-1) 68%);
+  border-color: color-mix(in srgb, var(--critical) 26%, var(--border));
+}
+.tile .k { font-size: 14.5px; color: var(--text-2); display: flex; align-items: center; gap: 6px; }
 .tile .v {
   font-size: clamp(24px, 2.9vw, 31px);
   font-weight: 660;
@@ -211,7 +221,7 @@ main { padding-bottom: 64px; }
   line-height: 1.15;
   overflow-wrap: anywhere;
 }
-.tile .u { font-size: 14px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.tile .u { font-size: 14px; color: var(--text-2); font-variant-numeric: tabular-nums; }
 .tile .d { font-size: 14.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .up { color: var(--good-text); }
 .down { color: var(--critical); }
@@ -315,20 +325,32 @@ main { padding-bottom: 64px; }
   border: 1px solid var(--border-strong);
   background: var(--surface-1);
   color: var(--critical);
-  font-size: 13.5px; font-weight: 550;
+  font-size: 14.5px; font-weight: 550;
   white-space: nowrap;
 }
 .co-del:hover { background: color-mix(in srgb, var(--critical) 8%, var(--surface-1)); }
 .co-del:disabled { opacity: 0.5; cursor: not-allowed; }
+/* 회사 상세 머리줄 — 목록으로 돌아가는 버튼이 가장 자주 눌리는 곳이라
+   ghost 로 흐리게 두지 않고 테두리를 준다. 파일 정보는 길어서 줄바꿈시킨다. */
+.co-head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.co-head strong { font-size: 22px; letter-spacing: -0.01em; }
+.btn-back { border-color: var(--border-strong); color: var(--text-1); }
+.co-head-meta {
+  color: var(--text-2);
+  font-size: 15px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .corow {
   /* 회사마다 배지 수·추이 폭이 달라 flex 로는 우측 요소들이 어긋난다.
      그리드로 열을 고정해 행끼리 세로로 맞춘다. */
   width: 100%;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 200px 16px;
+  grid-template-columns: minmax(0, 1fr) 215px 16px;
   align-items: center;
   gap: 14px;
-  padding: 13px clamp(12px, 2vw, 20px);
+  padding: 15px clamp(12px, 2vw, 20px);
   border: none;
   background: none;
   color: var(--text-1);
@@ -337,20 +359,22 @@ main { padding-bottom: 64px; }
 .corow:hover { background: var(--surface-2); }
 .corow.active { background: color-mix(in srgb, var(--series-1) 8%, var(--surface-1)); box-shadow: inset 3px 0 0 var(--series-1); }
 .co-main { display: grid; gap: 3px; min-width: 0; }
-.co-name { font-size: 18px; font-weight: 650; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.co-name { font-size: 20px; font-weight: 650; letter-spacing: -0.01em; overflow-wrap: anywhere; }
 .co-meta {
   display: flex; gap: 6px; flex-wrap: wrap;
-  font-size: 13.5px; color: var(--text-3);
+  /* text-3 은 밝은 테마에서 대비가 3.59:1 로 AA(4.5:1)에 못 미친다.
+     회사 목록은 가장 자주 보는 화면이라 보조 텍스트도 text-2(7.94:1)로 올린다. */
+  font-size: 15px; color: var(--text-2);
   font-variant-numeric: tabular-nums;
 }
 .co-go { color: var(--text-3); font-size: 18px; text-align: right; }
 
 .co-trend { display: flex; align-items: center; gap: 9px; justify-content: flex-start; min-width: 0; }
-.co-trend-txt { display: grid; gap: 0; font-size: 12.5px; min-width: 0; }
-.co-trend-v { font-size: 15.5px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.co-trend-txt { display: grid; gap: 0; font-size: 13.5px; min-width: 0; }
+.co-trend-v { font-size: 17px; font-weight: 650; font-variant-numeric: tabular-nums; }
 .co-trend-txt .up, .co-trend-txt .down { font-weight: 600; font-variant-numeric: tabular-nums; }
-.co-trend-span { color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.co-trend-empty { font-size: 12.5px; color: var(--text-3); }
+.co-trend-span { color: var(--text-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.co-trend-empty { font-size: 14px; color: var(--text-2); }
 
 @media (max-width: 720px) {
   /* 좁은 화면에서는 열을 포기하고 위아래로 쌓는다 */
@@ -757,7 +781,10 @@ table.fin.note td.lbl, table.fin.note th.lbl { max-width: 22em; }
   /* 모바일에서 본문을 줄이지 않는다. 입력은 16px 미만이면 iOS 가 화면을 확대한다. */
   input, select, textarea { font-size: 16px !important; }
   .tab { font-size: 15.5px; padding: 12px 15px; }
-  .co-name { font-size: 17px; }
+  /* 좁은 화면에서는 행이 세로로 쌓여 폭에 여유가 생긴다. 회사 목록은 가장 자주
+     보는 화면이라 회사명을 데스크톱만큼 두고, 머리줄만 한 단계 줄인다. */
+  .co-name { font-size: 19px; }
+  .co-head strong { font-size: 20px; }
   .prose { font-size: 16px; }
   table.fin { font-size: 15px; }
   .card-head { padding: 12px 14px; }
