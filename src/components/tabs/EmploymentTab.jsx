@@ -1,5 +1,5 @@
-import { useCallback, useMemo } from 'react'
-import { Card, Tile, Callout, Badge } from '../ui'
+import { useCallback, useMemo, useState } from 'react'
+import { Card, Tile, Callout, Badge, Seg } from '../ui'
 import { RemoteBar, RemoteEmpty } from '../RemoteBar'
 import { fetchEmployment, yearlyAverages, turnoverRate } from '../../lib/nps/api'
 import { loadEmployment, saveEmployment } from '../../lib/storage'
@@ -15,6 +15,13 @@ import { HeadcountChart } from '../charts'
  * 국민연금 고지금액으로 역산한 평균보수는 기준소득월액 상한에 걸려 낮게 나오므로
  * 둘을 같이 보여주고 차이를 밝힌다.
  */
+/** 표시 기간. 공단이 주는 건 12개월뿐이고, 그 이상은 DB 에 쌓인 만큼만 나온다. */
+const RANGES = [
+  { value: 12, label: '최근 1년' },
+  { value: 24, label: '최근 2년' },
+  { value: 36, label: '최근 3년' },
+]
+
 export default function EmploymentTab({ report, timeline }) {
   const company = report?.meta?.company
   const bizNo = report?.meta?.bizNo || null
@@ -29,7 +36,12 @@ export default function EmploymentTab({ report, timeline }) {
     fetch: useCallback(() => fetchEmployment(company, bizNo), [company, bizNo]),
   })
 
-  const months = data?.months || []
+  // 공단은 제공 시점 기준 12개월치만 준다. 2·3년은 받아온 것을 DB 에 쌓아
+  // 만들어지므로(storage.saveEmployment), 처음에는 1년치밖에 없는 게 정상이다.
+  const [range, setRange] = useState(12)
+  const all = data?.months || []
+  const months = useMemo(() => (range ? all.slice(-range) : all), [all, range])
+
   const years = useMemo(() => yearlyAverages(months), [months])
   const turnover = useMemo(() => turnoverRate(months), [months])
   const latest = months[months.length - 1] || null
@@ -60,7 +72,7 @@ export default function EmploymentTab({ report, timeline }) {
     <RemoteBar source="국민연금" fetchedAt={fetchedAt} stale={stale} fetching={fetching} onFetch={fetchNow} />
   )
 
-  if (!data?.found || !months.length) {
+  if (!data?.found || !all.length) {
     return (
       <Card title="고용 현황" right={fetchedAt ? bar : null}>
         <RemoteEmpty
@@ -109,13 +121,45 @@ export default function EmploymentTab({ report, timeline }) {
               />
             )}
             {latest.avgMonthlyWage && (
-              <Tile
-                label="평균 기준소득월액"
-                value={abbrev(latest.avgMonthlyWage)}
-                unit={`${full(latest.avgMonthlyWage)}원 · 상한 적용`}
-              />
+              <>
+                <Tile
+                  label="평균 기준소득월액"
+                  value={abbrev(latest.avgMonthlyWage)}
+                  unit={`${full(latest.avgMonthlyWage)}원 · 상한 적용`}
+                />
+                {/* 연봉 감각으로 바로 읽히도록 12개월분을 옆에 같이 둔다. */}
+                <Tile
+                  label="연 환산"
+                  value={abbrev(latest.avgMonthlyWage * 12)}
+                  unit={`${full(latest.avgMonthlyWage * 12)}원 · 월액 × 12`}
+                />
+              </>
             )}
           </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <span className="tnote">
+              {months[0].ym} ~ {latest.ym} · {months.length}개월
+            </span>
+            {/* 라벨에 개월 수를 덧붙이면 셋이 제각각 길어져 눈에 거슬린다.
+                모자란 사실은 바로 아래 안내에서 밝힌다. */}
+            <Seg ariaLabel="표시 기간" value={range} onChange={setRange} options={RANGES} />
+          </div>
+
+          {/* 안내를 그래프 아래에 두었더니 버튼을 눌러도 아무 일도 안 일어난 것처럼 보였다.
+              고른 기간만큼 없으면 그 이유가 그래프보다 먼저 눈에 들어와야 한다. */}
+          {range > all.length && (
+            <Callout tone="warn">
+              <span>
+                <strong>{RANGES.find((r) => r.value === range)?.label}치는 아직 없습니다.</strong> 국민연금은 제공
+                시점 기준 <strong>12개월치만</strong> 공개해서, 지금 가진 것은{' '}
+                <strong>{all.length}개월분</strong>({all[0]?.ym} ~ {all[all.length - 1]?.ym})뿐입니다. 그래서 그래프도
+                그대로입니다.
+                <br />
+                받아올 때마다 DB 에 쌓아 두므로, 매달 한 번씩 받아오면 그만큼 기간이 늘어납니다.
+              </span>
+            </Callout>
+          )}
 
           <HeadcountChart months={months} />
 
@@ -132,7 +176,7 @@ export default function EmploymentTab({ report, timeline }) {
         </div>
       </Card>
 
-      <Card title="월별 내역" sub={`${months.length}개월`} tight>
+      <Card title="월별 내역" sub={`${months.length}개월 · ${months[0].ym} ~ ${latest.ym}`} tight>
         <div style={{ overflowX: 'auto' }}>
           <table className="tbl">
             <thead>

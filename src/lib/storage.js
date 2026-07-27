@@ -262,14 +262,41 @@ export async function loadEmployment(companyKey) {
   }
 }
 
+/**
+ * 고용 정보 저장 — 덮어쓰지 않고 쌓는다.
+ *
+ * 국민연금은 제공 시점 기준 12개월치만 준다. 매번 덮어쓰면 이 앱도 영원히
+ * 12개월밖에 못 본다. 받아올 때마다 월 단위로 합쳐 두면 쓰는 만큼 기간이 늘어난다
+ * — 2·3년 추이는 그렇게만 만들 수 있다.
+ *
+ * 다른 사업장의 값이 섞이면 안 되므로 사업자번호가 달라지면 합치지 않는다.
+ */
 export async function saveEmployment(companyKey, payload) {
   if (!usesFirestore || !companyKey) return { saved: false, warning: null }
   try {
-    await setDoc(employmentDoc(companyKey), sanitize({ ...payload, v: CACHE_V, fetchedAt: Date.now() }))
+    const prev = await getDoc(employmentDoc(companyKey)).catch(() => null)
+    const old = prev?.exists() ? prev.data() : null
+    const sameWorkplace =
+      old?.v === CACHE_V &&
+      (!old.workplace?.bizNo || !payload.workplace?.bizNo || old.workplace.bizNo === payload.workplace.bizNo)
+
+    const months = sameWorkplace ? mergeMonths(old.months, payload.months) : payload.months
+    await setDoc(
+      employmentDoc(companyKey),
+      sanitize({ ...payload, months, v: CACHE_V, fetchedAt: Date.now(), firstSeenAt: old?.firstSeenAt ?? Date.now() })
+    )
     return { saved: true, warning: null }
   } catch (e) {
     return { saved: false, warning: firestoreHint(e) }
   }
+}
+
+/** 연월 기준 합집합. 같은 달이면 새로 받은 값이 이긴다(공단이 나중에 정정한다). */
+function mergeMonths(oldMonths, newMonths) {
+  const byYm = new Map()
+  for (const m of Array.isArray(oldMonths) ? oldMonths : []) if (m?.ym) byYm.set(m.ym, m)
+  for (const m of Array.isArray(newMonths) ? newMonths : []) if (m?.ym) byYm.set(m.ym, m)
+  return [...byYm.values()].sort((a, b) => String(a.ym).localeCompare(String(b.ym)))
 }
 
 export { EMPLOYMENT_TTL }
