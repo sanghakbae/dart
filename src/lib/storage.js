@@ -304,6 +304,36 @@ export async function saveFunding(companyKey, payload) {
 
 export { FUNDING_TTL }
 
+// ── 특허 캐시 ────────────────────────────────────────────────
+// KIPRIS 무료 한도가 월 1,000회다. 하루 캐시로 충분히 그 안에 든다.
+const PATENT_TTL = 24 * 60 * 60 * 1000
+const patentDoc = (ck) => doc(db, COL, ck, 'patents', 'latest')
+
+export async function loadPatents(companyKey) {
+  if (!usesFirestore || !companyKey) return null
+  try {
+    const snap = await getDoc(patentDoc(companyKey))
+    if (!snap.exists()) return null
+    const data = snap.data()
+    const empty = !Array.isArray(data.patents) || data.patents.length === 0
+    return { ...data, stale: empty || Date.now() - (data.fetchedAt || 0) > PATENT_TTL }
+  } catch {
+    return null
+  }
+}
+
+export async function savePatents(companyKey, payload) {
+  if (!usesFirestore || !companyKey) return { saved: false, warning: null }
+  try {
+    await setDoc(patentDoc(companyKey), sanitize({ ...payload, fetchedAt: Date.now() }))
+    return { saved: true, warning: null }
+  } catch (e) {
+    return { saved: false, warning: firestoreHint(e) }
+  }
+}
+
+export { PATENT_TTL }
+
 
 export async function loadContent(companyKey, reportId) {
   if (!usesFirestore) return null

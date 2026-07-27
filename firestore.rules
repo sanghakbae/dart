@@ -75,6 +75,15 @@ service cloud.firestore {
         allow delete: if signedIn();
       }
 
+      // 특허 캐시(하루 1회 갱신).
+      match /patents/{docId} {
+        allow read: if signedIn();
+        allow create, update: if signedIn()
+          && request.resource.data.keys().hasAll(['fetchedAt'])
+          && request.resource.data.fetchedAt is int;
+        allow delete: if signedIn();
+      }
+
       match /reports/{reportId} {
         allow read: if signedIn();
         allow delete: if signedIn();

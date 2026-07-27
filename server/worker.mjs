@@ -6,12 +6,14 @@
 // 인증키는 Worker 시크릿에만 둔다:
 //   wrangler secret put DART_API_KEY
 //   wrangler secret put NPS_API_KEY
+//   wrangler secret put KIPRIS_API_KEY
 //
 // 공개 URL 이므로 허용 오리진을 제한한다. 열어두면 아무 사이트나 이 프록시로
 // 우리 인증키 할당량을 소모할 수 있다.
 
 import { handleDart } from './dart-handler.mjs'
 import { handleNps } from './nps-handler.mjs'
+import { handleKipris } from './kipris-handler.mjs'
 import { handleHealth } from './health-handler.mjs'
 
 const ALLOWED = [
@@ -57,7 +59,8 @@ export default {
 
     const isDart = url.pathname.startsWith('/api/dart/')
     const isNps = url.pathname.startsWith('/api/nps/')
-    if (!isDart && !isNps) return json({ error: `알 수 없는 경로: ${url.pathname}` }, 404, {})
+    const isKipris = url.pathname.startsWith('/api/kipris/')
+    if (!isDart && !isNps && !isKipris) return json({ error: `알 수 없는 경로: ${url.pathname}` }, 404, {})
 
     // 브라우저에서 온 요청인데 허용 목록에 없으면 여기서 끊는다.
     // (서버 대 서버 호출은 Origin 헤더가 없어 통과시킨다)
@@ -73,7 +76,9 @@ export default {
 
     const response = isNps
       ? await handleNps(forwarded, env.NPS_API_KEY || '')
-      : await handleDart(forwarded, env.DART_API_KEY || '')
+      : isKipris
+        ? await handleKipris(forwarded, env.KIPRIS_API_KEY || '')
+        : await handleDart(forwarded, env.DART_API_KEY || '')
 
     if (!response) return json({ error: '처리할 수 없는 요청입니다.' }, 404, {})
     return scrub(response, env)
@@ -89,7 +94,7 @@ export default {
  */
 async function scrub(response, env) {
   if (response.status < 400) return response
-  const keys = [env.DART_API_KEY, env.NPS_API_KEY].filter((k) => k && k.length >= 8)
+  const keys = [env.DART_API_KEY, env.NPS_API_KEY, env.KIPRIS_API_KEY].filter((k) => k && k.length >= 8)
   if (!keys.length) return response
 
   const text = await response.text()
