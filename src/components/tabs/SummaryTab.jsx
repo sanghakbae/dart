@@ -180,7 +180,24 @@ function ShareCard({ shares, notes, curLabel }) {
             hint={major.raw}
           />
         )}
-        {major?.ratio != null && <Tile label="최대주주 지분율" value={pctText(major.ratio)} />}
+        {/* 보고서마다 분모가 달라(보통주만 / 우선주 포함) 해를 나란히 놓으면
+            지분이 오르내린 것처럼 보인다. 두 기준을 함께 낸다. */}
+        {major?.ratio != null && (
+          <Tile
+            label={`최대주주 지분율${major.statedBasis === 'total' ? ' (총주식수 기준)' : major.statedBasis === 'common' ? ' (보통주 기준)' : ''}`}
+            value={pctText(major.ratio)}
+            unit={
+              major.ratioTotal != null && major.ratioCommon != null && Math.abs(major.ratioCommon - major.ratioTotal) > 0.15
+                ? `보통주 ${pctText(major.ratioCommon)} · 총주식수 ${pctText(major.ratioTotal)}`
+                : undefined
+            }
+            hint={
+              major.ratioTotal != null && major.ratioCommon != null && Math.abs(major.ratioCommon - major.ratioTotal) > 0.15
+                ? '상환전환우선주를 분모에 넣느냐에 따라 달라집니다. 보고서마다 기준이 달라 연도별로 비교할 때 주의해야 합니다.'
+                : undefined
+            }
+          />
+        )}
         {shares.issuedShares != null && (
           <Tile
             label={shares.preferredHidden ? '보통주' : '발행주식수'}
@@ -227,7 +244,7 @@ function ShareCard({ shares, notes, curLabel }) {
               { key: 'capital', label: '자본금 변동' },
               { key: 'kind', label: '성격' },
             ]}
-            rows={shares.capitalChanges.map((c, i) => ({
+            rows={shares.capitalChanges.map((c) => ({
               label: c.label,
               level: 1,
               values: {
@@ -237,7 +254,6 @@ function ShareCard({ shares, notes, curLabel }) {
                 // 뭉쳐 보면 "몇 배 늘었다" 만 남아 잘못 읽게 된다.
                 kind: c.capitalMoved ? '잉여금 자본전입' : '액면가 분할 (자본금 불변)',
               },
-              key: `${c.kind}-${i}`,
             }))}
             note="주식수가 늘어난 사유입니다. 자본금이 함께 늘었으면 무상증자, 그대로면 액면분할입니다."
           />

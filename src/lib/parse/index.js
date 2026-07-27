@@ -87,7 +87,6 @@ export async function analyzeFile(file, onProgress) {
     blocks: statements.blocks.map(serializeBlock),
     shares,
     rcps,
-    capital,
     payroll,
     ratios,
     insights,

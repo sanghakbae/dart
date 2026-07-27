@@ -194,3 +194,124 @@ test('주식선택권 — 완전희석에 들어갈 잠재주식', () => {
   assert.equal(c.stockOptions.grants.length, 2)
   assert.equal(c.stockOptions.grants[0].strike, 4_600)
 })
+
+// ── 종류가 여럿일 때 ──────────────────────────────────────────
+// 제1종·제2종을 다른 가격에 발행하는 일이 흔하다. 첫 종류의 가격을 대표로 쓰면
+// 기업가치가 통째로 틀어진다.
+const TWO_SERIES = `
+9. 상환전환우선주
+(2) 당사가 발행한 상환전환우선주의 세부내역은 다음과 같습니다.
+구 분\t제1종 상환전환우선주\t제2종 상환전환우선주
+주당발행가액\t10,000원\t25,000원
+발행주식수\t100,000주\t40,000주
+발행일\t2021-05-20\t2024-03-11
+존속기간\t발행일로부터 10년\t발행일로부터 7년
+상환청구 기간\t발행일로부터 3년이 경과한 날부터\t발행일로부터 5년이 경과한 날부터
+상환금액\t연복리 5%의 비율로 계산한 이자\t연복리 5%의 비율로 계산한 이자
+10. 퇴직급여
+`
+
+test('RCPS — 대표 단가는 가장 최근 라운드 것을 쓴다', () => {
+  const r = parseRcps(docOf(TWO_SERIES))
+  assert.equal(r.series.length, 2)
+  assert.equal(r.shares, 140_000)
+  assert.equal(r.issuePrice, 25_000) // 2024년 라운드
+  assert.equal(r.issueDate, '2024-03-11')
+  assert.equal(r.mixedPrices, true)
+})
+
+test('RCPS — 조달금액은 종류별로 곱해 더한다', () => {
+  const r = parseRcps(docOf(TWO_SERIES))
+  // 10,000 × 100,000 + 25,000 × 40,000 = 20억. 대표 단가로 곱하면 35억이 된다.
+  assert.equal(r.raised, 2_000_000_000)
+})
+
+test('RCPS — 상환청구는 가장 먼저 열리는 것이 위험을 정한다', () => {
+  const r = parseRcps(docOf(TWO_SERIES))
+  // 제1종 2021+3=2024, 제2종 2024+5=2029 → 이른 쪽
+  assert.equal(r.putStartDate, '2024-05-20')
+})
+
+test('RCPS — 종류가 둘이면 상환할증금 역산을 하지 않는다', () => {
+  const r = parseRcps(docOf(TWO_SERIES))
+  // 부채 표의 원금은 종류를 합친 값이라 한 종류의 존속기간으로 나눌 수 없다
+  assert.equal(r.impliedRate, null)
+})
+
+test('자본금 — 열 순서가 뒤바뀌어도 주식수와 자본금을 헷갈리지 않는다', () => {
+  const SWAPPED = `
+12. 자본금
+(3) 당기 중 자본금의 변동 내용은 다음과 같습니다.
+구 분\t자본금\t주식수
+액면분할\t-\t3,600,000주
+무상증자\t1,900,000,000\t380,000주
+13. 이익잉여금
+`
+  const c = parseCapital(docOf(SWAPPED))
+  assert.deepEqual(
+    c.changes.map((x) => [x.kind, x.shares, x.capital]),
+    [
+      ['split', 3_600_000, null],
+      ['bonus', 380_000, 1_900_000_000],
+    ]
+  )
+})
+
+// 보통주를 못 읽었는데 우선주만 잡히면, 그 수가 총 발행주식수로 앉아
+// 기업가치가 통째로 그 수로 매겨진다. 총수를 지어내지 않는지 본다.
+test('주식수 — 보통주를 모르면 총 발행주식수를 만들지 않는다', async () => {
+  const { parseShares } = await import('../src/lib/parse/shares.js')
+  const doc = { fullText: '상환전환우선주를 발행하였습니다.', rows: [] }
+  const s = parseShares(doc, null, { rcps: { shares: 685_800 }, capital: null })
+  assert.equal(s.commonShares, null)
+  assert.equal(s.preferredShares, 685_800)
+  assert.equal(s.totalShares, null)
+  assert.equal(s.dilutedShares, null)
+})
+
+// 무하유 2024년 보고서는 총주식수 기준 58.00%, 2025년은 보통주 기준 67.94% 로 적었다.
+// 지분은 1주도 안 움직였는데 두 해를 나란히 놓으면 늘어난 것처럼 보였다.
+test('최대주주 — 분모가 보고서마다 달라도 두 기준을 모두 낸다', async () => {
+  const { parseShares } = await import('../src/lib/parse/shares.js')
+  const doc = {
+    fullText: '당기말 현재 최대 주주(보통주)이자 대표이사인 신동호는 2,717,600주(지분율 67.94%)의 주식을 보유하고 있습니다.',
+    rows: [],
+  }
+  const s = parseShares(doc, null, {
+    rcps: { shares: 685_800 },
+    capital: { issuedShares: 4_000_000 },
+  })
+  const m = s.majorShareholder
+  assert.equal(m.shares, 2_717_600)
+  assert.equal(m.statedBasis, 'common') // 문장은 보통주 기준으로 적혔다
+  assert.equal(Math.round(m.ratioCommon * 100) / 100, 67.94)
+  assert.equal(Math.round(m.ratioTotal * 100) / 100, 58) // 2024년 보고서가 적은 값과 같다
+})
+
+// 주식선택권은 자본금과 다른 주석에 있다. 자본금 주석이 없다고 잠재주식까지
+// 버리면 완전희석 주식수가 조용히 사라진다.
+test('자본금 — 자본금 주석이 없어도 주식선택권은 살린다', () => {
+  const ONLY_OPTIONS = `
+19. 주식기준보상
+구 분\t발행주식수\t행사가능주식수\t부여일\t부여방법\t행사가격\t행사가능기간
+1차\t73,800주\t73,800주\t2024-03-22\t신주교부방식\t4,600\t2026-03-23 ~ 2033-03-23
+20. 기타자본항목
+`
+  const c = parseCapital(docOf(ONLY_OPTIONS))
+  assert.equal(c.issuedShares, undefined)
+  assert.equal(c.stockOptions.potentialShares, 73_800)
+})
+
+// 일반기업회계기준 보고서는 우선주를 발행주식수에 이미 포함해 적는다
+// (무하유 2024년 23,429주 = 보통주 20,000 + RCPS 3,429). 그걸 쪼갤 근거가
+// 문서에 없으므로 '보통주 기준' 이라고 단정하면 안 된다.
+test('최대주주 — 우선주를 못 가려내면 기준을 단정하지 않는다', async () => {
+  const { parseShares } = await import('../src/lib/parse/shares.js')
+  const doc = {
+    fullText: '당기말 현재 최대 주주이자 대표이사인 신동호는 13,588주(지분율 58.00%)의 주식을 보유하고 있습니다.',
+    rows: [],
+  }
+  const s = parseShares(doc, null, { rcps: null, capital: { issuedShares: 23_429 } })
+  assert.equal(s.majorShareholder.statedBasis, null)
+  assert.equal(s.preferredShares, null)
+})

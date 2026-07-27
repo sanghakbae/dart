@@ -65,16 +65,13 @@ export function parseRcps(doc) {
   // 표를 하나도 못 읽었으면 이 주석이 아니거나 서식이 다른 것이다.
   if (!series.length && !liability) return null
 
-  const totalShares = sumOf(series, 'shares')
-  const issuePrice = series.find((s) => s.issuePrice != null)?.issuePrice ?? null
-  const raised = liability?.face ?? (issuePrice != null && totalShares != null ? issuePrice * totalShares : null)
+  const detailed = series.map(withTerms)
+  const totalShares = sumOf(detailed, 'shares')
 
   return {
     found: true,
-    series,
+    series: detailed,
     shares: totalShares,
-    issuePrice,
-    raised,
     liability,
     accretion,
     derivative,
@@ -82,7 +79,7 @@ export function parseRcps(doc) {
     // 이 회사 몫으로 잡힌 RCPS 관련 부채 전부. 부채요소만 보면 절반도 안 보인다
     // (무하유는 부채요소 66.6억 + 파생상품 101.8억 = 168.4억이고 자본총계가 108.5억이다).
     totalLiability: sumNullable([liability?.carrying, derivative?.current]),
-    ...terms(series, liability),
+    ...summarize(detailed, liability),
   }
 }
 
@@ -205,47 +202,87 @@ function readPnl(zone) {
   return out.pretaxExDerivative != null || out.derivativeLoss != null ? out : null
 }
 
+/** 종류주식 하나의 조항 문장에서 기간·이율을 뽑아 붙인다. */
+function withTerms(s) {
+  const termYears = firstNumber(s.term, /(\d+(?:\.\d+)?)\s*년/)
+  const putAfterYears = firstNumber(s.putPeriod, /(\d+(?:\.\d+)?)\s*년이?\s*경과/)
+  return {
+    ...s,
+    termYears,
+    putAfterYears,
+    maturityDate: addYears(s.issueDate, termYears),
+    putStartDate: addYears(s.issueDate, putAfterYears),
+    statedRate:
+      firstNumber(s.redemption, /연\s*복리\s*([\d.]+)\s*%/) ?? firstNumber(s.redemption, /연\s*([\d.]+)\s*%/),
+  }
+}
+
 /**
- * 조항 문장에서 숫자를 뽑는다.
+ * 여러 종류를 하나로 요약한다.
+ *
+ * 제1종·제2종을 각각 다른 가격에 발행하는 일이 흔하다. 그때 첫 번째 종류의 가격을
+ * 대표로 쓰면 기업가치가 통째로 틀어진다 — 조달금액은 종류별로 곱해 더하고,
+ * 대표 단가는 '가장 최근 라운드' 것을 쓴다(그게 그 시점의 밸류를 말한다).
+ * 반대로 위험은 '가장 먼저 열리는' 상환청구가 정하므로 그쪽은 최솟값을 쓴다.
  *
  * 보장수익률은 두 곳에서 나온다 — 상환금액 조항의 "연복리 7%" 와,
  * 상환할증금을 원금으로 역산한 값. 둘을 맞춰 보면 어느 쪽 해석이 맞는지 알 수 있다.
  */
-function terms(series, liability) {
-  const s = series[0] || {}
-  const termYears = firstNumber(s.term, /(\d+(?:\.\d+)?)\s*년/)
-  const putAfterYears = firstNumber(s.putPeriod, /(\d+(?:\.\d+)?)\s*년이?\s*경과/)
-  const statedRate = firstNumber(s.redemption, /연\s*복리\s*([\d.]+)\s*%/)
-    ?? firstNumber(s.redemption, /연\s*([\d.]+)\s*%/)
+function summarize(series, liability) {
+  const byDateDesc = [...series].sort((a, b) =>
+    String(b.issueDate || '').localeCompare(String(a.issueDate || ''))
+  )
+  const latest = byDateDesc[0] || {}
+
+  const prices = [...new Set(series.map((s) => s.issuePrice).filter((v) => v != null))]
+  const priced = series.filter((s) => s.issuePrice != null && s.shares != null)
+  const raised =
+    liability?.face ??
+    (priced.length ? priced.reduce((a, s) => a + s.issuePrice * s.shares, 0) : null)
 
   const face = liability?.face ?? null
   const premium = liability?.premium ?? null
-  // (원금+할증금 ÷ 원금)^(1/존속기간) − 1
+  // (원금+할증금 ÷ 원금)^(1/존속기간) − 1.
+  // 부채 표는 종류를 합친 금액이라, 종류가 둘 이상이면 역산이 성립하지 않는다.
+  const single = series.length <= 1
   const impliedRate =
-    face && premium && termYears ? (((face + premium) / face) ** (1 / termYears) - 1) * 100 : null
+    single && face && premium && latest.termYears
+      ? (((face + premium) / face) ** (1 / latest.termYears) - 1) * 100
+      : null
+
+  const putDates = series.map((s) => s.putStartDate).filter(Boolean).sort()
 
   return {
-    issueDate: s.issueDate || null,
-    termYears,
-    maturityDate: addYears(s.issueDate, termYears),
-    putAfterYears,
-    putStartDate: addYears(s.issueDate, putAfterYears),
-    statedRate,
+    issueDate: latest.issueDate || null,
+    issuePrice: latest.issuePrice ?? null,
+    // 종류마다 단가가 다르면 대표 단가 하나로 기업가치를 매길 수 없다. 화면에서 밝힌다.
+    mixedPrices: prices.length > 1,
+    raised,
+    // 종류마다 보장이율이 다르면 합친 원금에 한 이율을 곱할 수 없다.
+    uniformRate: new Set(series.map((s) => s.statedRate).filter((v) => v != null)).size <= 1,
+    termYears: latest.termYears ?? null,
+    maturityDate: latest.maturityDate || null,
+    putAfterYears: latest.putAfterYears ?? null,
+    putStartDate: putDates[0] || null,
+    statedRate: latest.statedRate ?? null,
     impliedRate: impliedRate != null ? Math.round(impliedRate * 100) / 100 : null,
     // 배당 0% 라도 상환할증금이 수익률을 대신하는 구조가 흔하다. 둘을 같이 봐야 한다.
-    dividend: s.dividend || null,
-    refixing: s.refixing || null,
-    conversionRatio: s.conversionRatio || null,
-    putPeriod: s.putPeriod || null,
-    redemption: s.redemption || null,
+    dividend: latest.dividend || null,
+    refixing: latest.refixing || null,
+    conversionRatio: latest.conversionRatio || null,
+    putPeriod: latest.putPeriod || null,
+    redemption: latest.redemption || null,
   }
 }
 
-/** 상환청구가 열리는 시점의 상환금액 = 원금 × (1+r)^경과연수 */
+/**
+ * 상환청구가 열리는 시점의 상환금액 = 원금 × (1+r)^경과연수.
+ * 부채 표의 원금은 종류를 합친 값이라, 종류마다 이율이 다르면 계산이 성립하지 않는다.
+ */
 export function redemptionAt(rcps, years) {
   const face = rcps?.liability?.face
   const rate = rcps?.statedRate ?? rcps?.impliedRate
-  if (!face || !rate || !years) return null
+  if (!face || !rate || !years || rcps?.uniformRate === false) return null
   return Math.round(face * (1 + rate / 100) ** years)
 }
 

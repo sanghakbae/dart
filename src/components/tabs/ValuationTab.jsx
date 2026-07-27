@@ -50,6 +50,8 @@ export default function ValuationTab({ report, timeline }) {
           <span className="sub">방법별 결과와 그 중앙값</span>
         </div>
         <div className="grid grid-tiles">
+          {/* 높은 값부터 내려간다 — 위에서부터 읽으면 상단·중앙·하단 순이 자연스럽다. */}
+          <Tile label="가장 높은 추정" value={v.range.max} unit={`${full(Math.round(v.range.max))}원`} />
           <Tile
             label="중앙값"
             value={v.median}
@@ -61,7 +63,6 @@ export default function ValuationTab({ report, timeline }) {
             }
           />
           <Tile label="가장 낮은 추정" value={v.range.min} unit={`${full(Math.round(v.range.min))}원`} />
-          <Tile label="가장 높은 추정" value={v.range.max} unit={`${full(Math.round(v.range.max))}원`} />
           {v.issuedShares && (
             <Tile
               label="보통주 1주당 (중앙값)"

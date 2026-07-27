@@ -47,6 +47,7 @@ export function parseShares(doc, notes, extra = {}) {
   }
 
   Object.assign(shares, composeShareCounts(shares, rcps, capital))
+  if (major) shares.majorShareholder = withOwnershipBasis(major, shares)
 
   // 근거 주석 — 숫자의 출처를 바로 읽을 수 있게 본문을 함께 보관한다.
   shares.sourceNotes = collectSourceNotes(notes, shares)
@@ -75,7 +76,9 @@ function composeShareCounts(shares, rcps, capital) {
   const preferred = rcps?.shares ?? null
   const potential = capital?.stockOptions?.potentialShares ?? null
 
-  const total = common != null || preferred != null ? (common ?? 0) + (preferred ?? 0) : null
+  // 보통주를 못 읽었으면 총수를 지어내면 안 된다. 우선주만 총수로 잡히면
+  // 기업가치가 그 수로 매겨져 통째로 틀어진다.
+  const total = common != null ? common + (preferred ?? 0) : null
   const diluted = total != null ? total + (potential ?? 0) : null
 
   const byType = []
@@ -92,6 +95,40 @@ function composeShareCounts(shares, rcps, capital) {
     // 총 주식수를 보통주만으로 잡고 있었는지 — 화면에서 이 사실을 밝혀야 한다.
     preferredHidden: preferred != null && preferred > 0,
   }
+}
+
+/**
+ * 최대주주 지분율의 분모를 밝힌다.
+ *
+ * 감사보고서마다 분모가 다르다. 무하유는 2024년 보고서가 총주식수 기준 58.00%,
+ * 2025년 보고서가 보통주 기준 67.94% 로 적었다(2025년 문장에만 "최대 주주(보통주)"
+ * 라고 붙어 있다). 지분은 1주도 안 움직였는데 두 해를 나란히 놓으면 대주주가
+ * 10%p 늘린 것처럼 보인다 — 실제로 그렇게 읽혔다.
+ *
+ * 그래서 문장의 숫자를 그대로 쓰지 않고, 우리가 아는 주식수로 두 기준을 모두
+ * 계산한 뒤 문장이 어느 쪽인지 대조한다.
+ */
+function withOwnershipBasis(major, shares) {
+  const held = major.shares
+  const pct = (denom) => (held != null && denom ? (held / denom) * 100 : null)
+  const ratioCommon = pct(shares.commonShares)
+  const ratioTotal = pct(shares.totalShares)
+  // 반올림·액면분할 잔차를 고려해 0.15%p 안이면 같은 기준으로 본다.
+  const near = (a, b) => a != null && b != null && Math.abs(a - b) <= 0.15
+
+  // 우선주를 따로 인식하지 못했으면 두 기준이 같은 값이라 무엇으로 적혔는지 알 수 없다.
+  // 그때 '보통주 기준' 이라고 단정하면 거짓말이 된다 — 일반기업회계기준 보고서는
+  // 우선주를 발행주식수에 이미 포함해 적는다(무하유 2024년 23,429주).
+  const distinguishable = ratioCommon != null && ratioTotal != null && !near(ratioCommon, ratioTotal)
+  const statedBasis = !distinguishable
+    ? null
+    : near(major.ratio, ratioCommon)
+      ? 'common'
+      : near(major.ratio, ratioTotal)
+        ? 'total'
+        : null
+
+  return { ...major, ratioStated: major.ratio ?? null, ratioCommon, ratioTotal, statedBasis }
 }
 
 /** "최대 주주 … 신동호는 2,717,600주(지분율 67.94%)" */

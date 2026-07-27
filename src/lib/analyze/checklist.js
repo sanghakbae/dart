@@ -346,14 +346,25 @@ export function buildChecklist(report, timeline, notes) {
   // ── 6. 지배구조 · 우발사항 ─────────────────────────────
   const shares = report?.shares
   if (shares?.majorShareholder) {
-    const ratio = shares.majorShareholder.ratio
+    const m = shares.majorShareholder
+    // 상환전환우선주에도 의결권이 있으므로, 경영권을 볼 때는 그걸 포함한 분모가 맞다.
+    // 보고서 문장은 보통주만으로 적기도 해서 그대로 쓰면 지분율이 부풀려진다.
+    const ratio = m.ratioTotal ?? m.ratio
+    const split = m.ratioCommon != null && m.ratioTotal != null && Math.abs(m.ratioCommon - m.ratioTotal) > 0.15
     add({
       id: 'ownership',
       group: '지배구조 · 우발사항',
       title: '최대주주 지분율',
       status: ratio == null ? S.unknown : ratio >= 50 ? S.info : ratio < 20 ? S.warn : S.info,
-      value: `${shares.majorShareholder.name} ${ratio != null ? pct(ratio, 2) : '-'}`,
-      why: '지분율이 높으면 의사결정은 빠르지만 견제가 약하고, 너무 낮으면 경영권이 불안정합니다.',
+      value: `${m.name} ${ratio != null ? pct(ratio, 2) : '-'}`,
+      detail: split
+        ? `보통주 기준 ${pct(m.ratioCommon, 2)} · 총주식수(우선주 포함) 기준 ${pct(m.ratioTotal, 2)}`
+        : null,
+      why:
+        '지분율이 높으면 의사결정은 빠르지만 견제가 약하고, 너무 낮으면 경영권이 불안정합니다.' +
+        (split
+          ? ' 상환전환우선주에도 의결권이 있어 총주식수 기준으로 봤습니다. 보고서 문장은 보통주만으로 적기도 해 연도별로 기준이 어긋날 수 있습니다.'
+          : ''),
     })
   }
 

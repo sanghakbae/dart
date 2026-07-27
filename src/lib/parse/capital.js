@@ -42,18 +42,20 @@ const BALANCE_ROW = /^(전기초|전기말|당기초|당기말|기초|기말|합
  */
 export function parseCapital(doc) {
   const rows = (doc?.rows || []).map((r) => (r.cells || []).map((c) => String(c).trim()))
-  const zone = noteZone(rows, CAPITAL_HEAD)
-  if (!zone) return null
+  // 주식선택권은 자본금과 다른 주석에 있다. 자본금 주석을 못 찾았다고
+  // 잠재주식까지 함께 버리면 완전희석 주식수가 조용히 사라진다.
+  const stockOptions = parseStockOptions(rows)
 
-  const summary = readSummary(zone)
-  const changes = readChanges(zone)
-  if (!summary && !changes.length) return null
+  const zone = noteZone(rows, CAPITAL_HEAD)
+  const summary = zone ? readSummary(zone) : null
+  const changes = zone ? readChanges(zone) : []
+  if (!summary && !changes.length && !stockOptions) return null
 
   return {
     found: true,
     ...summary,
     changes,
-    stockOptions: parseStockOptions(rows),
+    stockOptions,
   }
 }
 
@@ -78,18 +80,29 @@ function readSummary(zone) {
 /**
  * 자본금 변동 내역. 사유별로 주식수와 자본금 변동을 함께 담는다.
  * 자본금이 움직이지 않은 주식수 증가는 액면분할이다 — 라벨이 없어도 그걸로 갈린다.
+ *
+ * 열 순서는 문서마다 다르다(주식수·자본금 / 자본금·주식수). 자리로 짐작하면
+ * 둘이 뒤바뀌어 액면분할이 무상증자로 둔갑한다. 표 머리에서 열 위치를 먼저 찾는다.
  */
 function readChanges(zone) {
   const out = []
+  let cols = null
   for (const cells of zone) {
     if (cells.length < 2) continue
     const label = normLabel(cells[0])
+
+    if (/^구분$/.test(label) && /주식수|자본금/.test(cells.join(''))) {
+      const idx = (re) => cells.findIndex((c, i) => i > 0 && re.test(normLabel(c)))
+      cols = { shares: idx(/주식수/), capital: idx(/자본금/) }
+      continue
+    }
     if (BALANCE_ROW.test(label)) continue
     const hit = EVENTS.find(([re]) => re.test(label))
     if (!hit) continue
 
-    const shares = parseAmount(String(cells[1] || '').replace(/주/g, ''))
-    const capital = cells[2] != null ? parseAmount(cells[2]) : null
+    const at = (i, fallback) => (i > 0 ? cells[i] : cells[fallback])
+    const shares = parseAmount(String(at(cols?.shares ?? -1, 1) || '').replace(/주/g, ''))
+    const capital = parseAmount(at(cols?.capital ?? -1, 2) ?? null)
     if (shares == null && capital == null) continue
     out.push({
       kind: hit[1],

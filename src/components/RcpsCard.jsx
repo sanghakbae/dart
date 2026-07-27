@@ -20,6 +20,8 @@ export default function RcpsCard({ rcps, shares }) {
   const rate = rcps.statedRate ?? rcps.impliedRate
   const putDue = daysUntil(rcps.putStartDate)
   const putAmount = redemptionAt(rcps, rcps.putAfterYears)
+  // 조항 표는 가장 최근 라운드 기준으로 보여준다(요약값도 그쪽을 따른다).
+  const latest = rcps.series.find((s) => s.issueDate === rcps.issueDate) || rcps.series[0] || null
 
   return (
     <Card
@@ -38,7 +40,7 @@ export default function RcpsCard({ rcps, shares }) {
           {rcps.issuePrice != null && (
             <Tile label="주당발행가액" value={`${full(rcps.issuePrice)}원`} unit={rcps.shares ? `${full(rcps.shares)}주` : undefined} />
           )}
-          {postMoney != null && (
+          {postMoney != null && !rcps.mixedPrices && (
             <Tile
               label="발행가 기준 기업가치"
               value={postMoney}
@@ -58,12 +60,13 @@ export default function RcpsCard({ rcps, shares }) {
 
         {/* 배당 0% 를 보고 '무배당이라 부담이 없다' 고 읽으면 정반대다.
             상환할증금이 수익률을 대신하고, 그 금액이 이미 부채로 쌓여 있다. */}
-        {rcps.liability?.premium != null && (
+        {rcps.liability?.premium != null && rcps.liability?.face != null && (
           <Callout tone="warn">
             <span>
               배당은 <strong>{rcps.dividend || '액면 기준 0%'}</strong>지만, 상환할증금{' '}
               <strong>{abbrev(rcps.liability.premium)}</strong>이 그 자리를 대신합니다. 원금{' '}
-              {abbrev(rcps.liability.face)}에 <strong>연복리 {rate}%</strong>를 붙여 상환하는 구조라
+              {abbrev(rcps.liability.face)}에{' '}
+              {rate != null ? <><strong>연복리 {rate}%</strong>를 붙여</> : '할증을 붙여'} 상환하는 구조라
               {rcps.maturityDate && <> 만기({rcps.maturityDate})에는 {abbrev(rcps.liability.face + rcps.liability.premium)}이 됩니다.</>}
             </span>
           </Callout>
@@ -94,12 +97,35 @@ export default function RcpsCard({ rcps, shares }) {
           </Callout>
         )}
 
+        {rcps.mixedPrices && (
+          <Callout tone="warn">
+            종류마다 발행가가 달라 대표 단가 하나로 기업가치를 매기지 않았습니다.
+            아래 종류별 발행가와 주식수를 직접 보고 판단해 주세요.
+          </Callout>
+        )}
+
+        {rcps.series.length > 1 && (
+          <FinTable
+            columns={[
+              { key: 'price', label: '주당발행가액' },
+              { key: 'shares', label: '발행주식수' },
+              { key: 'date', label: '발행일' },
+            ]}
+            rows={rcps.series.map((s) => ({
+              label: s.name,
+              level: 1,
+              values: { price: s.issuePrice, shares: s.shares, date: s.issueDate || '-' },
+            }))}
+            note="종류주식이 여럿입니다. 조달금액은 종류별로 곱해 더한 값입니다."
+          />
+        )}
+
         <FinTable
           columns={[{ key: 'v', label: '내용' }]}
           rows={[
-            { label: '종류', level: 0, values: { v: rcps.series?.[0]?.name || '상환전환우선주' } },
+            { label: '종류', level: 0, values: { v: latest?.name || '상환전환우선주' } },
             { label: '발행일', level: 1, values: { v: rcps.issueDate || '-' } },
-            { label: '존속기간', level: 1, values: { v: rcps.series?.[0]?.term || '-' } },
+            { label: '존속기간', level: 1, values: { v: latest?.term || '-' } },
             { label: '배당', level: 1, values: { v: rcps.dividend || '-' } },
             { label: '전환비율', level: 1, values: { v: rcps.conversionRatio || '-' } },
             { label: '전환비율 조정 (리픽싱)', level: 1, values: { v: rcps.refixing || '없음' } },

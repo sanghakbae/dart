@@ -140,7 +140,9 @@ export function valuate(values, timelineRows = [], shares = null, multiples = DE
 function roundValue(rcps, shares) {
   const price = num(rcps?.issuePrice)
   const total = num(shares?.totalShares)
-  if (!price || !total) return null
+  // 종류마다 발행가가 다르면 대표 단가 하나로 총액을 매길 수 없다.
+  // 투자 탭에서 종류별 발행가를 그대로 보여주므로 여기서는 내지 않는다.
+  if (!price || !total || rcps?.mixedPrices) return null
 
   const year = rcps.issueDate ? rcps.issueDate.slice(0, 4) : null
   const diluted = num(shares?.dilutedShares)
