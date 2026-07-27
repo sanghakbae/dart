@@ -214,22 +214,6 @@ export function accumulateCompany(prev, report, owner) {
 }
 
 /**
- * 전기 비교치로만 존재하는 연도.
- * 같은 연도에 fromPrior 가 아닌 항목이 하나라도 있으면 그 해는 당기로 보고된 것이다.
- */
-function priorOnly(all) {
-  const reported = new Set()
-  const seen = new Set()
-  for (const p of all) {
-    if (p.year == null) continue
-    seen.add(p.year)
-    // reportedCurrent 가 없는 옛 문서는 fromPrior 로 대신 판단한다.
-    if (p.reportedCurrent ?? !p.fromPrior) reported.add(p.year)
-  }
-  return [...seen].filter((y) => !reported.has(y)).sort((a, b) => a - b)
-}
-
-/**
  * 회사 문서 → 리스트·스파크라인용 파생값.
  * 추이는 기준을 섞지 않는다: 최신 보고서의 연결/별도 기준을 따르고, 그 안에서
  * 가장 포괄적인 보고기간 종류(연간 우선)만 골라 한 축에 올린다.
@@ -279,7 +263,6 @@ export function companyView(doc) {
     // 그 해를 '당기'로 보고한 보고서 없이, 다른 보고서의 전기 비교치로만 채워진 연도.
     // 감사보고서는 당기와 전기를 함께 싣기 때문에 한 건만 올려도 연도가 둘로 늘어난다.
     // 값이 비교치뿐이면 손익이 비어 추이에 안 잡히는 일이 있어 화면에서 구분해 준다.
-    priorOnlyYears: priorOnly(all),
     periodTypes: types,
     // 기준별로 어느 연도가 쌓였는지 — 화면에서 "별도 3개년 · 연결 2개년" 으로 보여준다.
     byBasis: [...new Set(all.map((p) => p.basis || '별도'))]
