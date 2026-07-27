@@ -19,6 +19,7 @@ export default function DartImport({ onFiles, busy }) {
   const [loadingFilings, setLoadingFilings] = useState(false)
   const [error, setError] = useState(null)
   const [pulling, setPulling] = useState(null)
+  const [showPeriodic, setShowPeriodic] = useState(false) // 분기·반기는 접어 둔다
   const seq = useRef(0)
 
   // 검색은 12만 건 색인을 훑으므로 입력이 멈춘 뒤에 돈다.
@@ -44,6 +45,7 @@ export default function DartImport({ onFiles, busy }) {
     setFilings([])
     setTruncated(false)
     setError(null)
+    setShowPeriodic(false)
     setLoadingFilings(true)
     try {
       const { list, truncated: cut } = await fetchFilings(c.code)
@@ -127,8 +129,13 @@ export default function DartImport({ onFiles, busy }) {
           {loadingFilings ? (
             <div className="tnote">공시 목록을 불러오는 중…</div>
           ) : filings.length ? (
-            <ul className="dart-hits">
-              {filings.map((f) => (
+            (() => {
+              // 연 1회 감사받은 재무제표(상장사 사업보고서 · 비상장사 감사보고서)만
+              // 앞세운다. 분기·반기는 검토만 받은 것이라 연간 추이에 섞으면 어긋나므로
+              // 접어 두고, 필요할 때만 펼친다.
+              const annual = filings.filter((f) => f.kind === 'annual')
+              const periodic = filings.filter((f) => f.kind !== 'annual')
+              const row = (f) => (
                 <li key={f.rceptNo}>
                   <button type="button" onClick={() => pull(f)} disabled={busy || pulling}>
                     <span className="dh-name">{f.reportNm}</span>
@@ -136,8 +143,40 @@ export default function DartImport({ onFiles, busy }) {
                     <span className="dh-go">{pulling === f.rceptNo ? '가져오는 중…' : '가져오기'}</span>
                   </button>
                 </li>
-              ))}
-            </ul>
+              )
+              return (
+                <>
+                  {annual.length > 0 && <ul className="dart-hits">{annual.map(row)}</ul>}
+                  {annual.length === 0 && (
+                    <Callout tone="warn">
+                      연간 보고서(사업보고서·감사보고서)가 목록에 없습니다. 최근 것부터 일부만 불러왔을 수
+                      있으니 아래에서 분기·반기를 펼쳐 확인하거나, 해당 연도는 파일로 올려 주세요.
+                    </Callout>
+                  )}
+                  {periodic.length > 0 && (
+                    <div className="stack" style={{ marginTop: annual.length ? 10 : 0 }}>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-ghost"
+                        onClick={() => setShowPeriodic((v) => !v)}
+                        style={{ alignSelf: 'flex-start' }}
+                      >
+                        {showPeriodic ? '분기·반기 접기' : `분기·반기 보고서 ${periodic.length}건 보기`}
+                      </button>
+                      {showPeriodic && (
+                        <>
+                          <div className="tnote">
+                            분기·반기는 감사가 아니라 검토만 받은 보고서입니다. 연간 추이에 섞으면 기간이 달라
+                            비교가 어긋나므로 따로 두었습니다.
+                          </div>
+                          <ul className="dart-hits">{periodic.map(row)}</ul>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </>
+              )
+            })()
           ) : (
             !error && <Empty title="공시가 없습니다" />
           )}

@@ -36,9 +36,18 @@ service cloud.firestore {
     }
 
     match /companies/{companyKey} {
-      // 내가 올린 것 + 관리자가 공통 노출로 지정한 것만 보인다.
-      // 목록 조회는 이 조건에 맞는 쿼리로만 성공한다(src/lib/storage.js listCompanies 참고).
-      allow read: if signedIn() && (
+      // 단건 조회(get)는 로그인한 사용자면 된다.
+      //
+      // 업로드는 회사 문서를 읽고-합치고-쓰는 트랜잭션이다(storage.saveToFirestore).
+      // 읽기를 소유자로 잠그면, 남이 먼저 올린 회사에 다른 연도를 보태려는 순간
+      // 그 트랜잭션의 get 이 막혀 "권한이 없습니다" 로 끝난다 — 두산퓨얼셀에서 그랬다.
+      // 어차피 보고서 원문·본문(reports/content)은 이미 로그인한 누구나 읽으므로,
+      // 요약인 회사 문서만 잠가 둘 이유가 없다.
+      allow get: if signedIn();
+
+      // 목록(list)은 여전히 '내가 올린 것 + 공통 노출'만 보인다. 이 조건에 맞는
+      // 쿼리로만 성공한다(src/lib/storage.js listCompanies 참고).
+      allow list: if signedIn() && (
         isAdmin()
         || resource.data.get('shared', false) == true
         || resource.data.get('ownerUid', '') == request.auth.uid
