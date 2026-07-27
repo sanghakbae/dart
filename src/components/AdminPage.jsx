@@ -54,12 +54,12 @@ export default function AdminPage({ companies, onBack, onShare, sharingKey }) {
       {error && <Callout tone="warn">{error}</Callout>}
 
       <div className="grid grid-tiles">
-        <Tile label="가입 사용자" value={stats.total} unit="명" />
-        <Tile label="최근 7일 활동" value={stats.active7} unit="명" />
-        <Tile label="최근 30일 활동" value={stats.active30} unit="명" />
-        <Tile label="누적 로그인" value={stats.logins} unit="회" />
-        <Tile label="누적 업로드" value={stats.uploads} unit="건" />
-        <Tile label="저장된 보고서" value={stats.reports} unit="건" />
+        <Tile label="가입 사용자" value={stats.total} suffix="명" />
+        <Tile label="최근 7일 활동" value={stats.active7} suffix="명" />
+        <Tile label="최근 30일 활동" value={stats.active30} suffix="명" />
+        <Tile label="누적 로그인" value={stats.logins} suffix="회" />
+        <Tile label="누적 업로드" value={stats.uploads} suffix="건" />
+        <Tile label="저장된 보고서" value={stats.reports} suffix="건" />
       </div>
 
       <Card title="사용자" sub={loading ? '불러오는 중…' : `${users.length}명 · 최근 접속순`} tight>

@@ -42,7 +42,7 @@ export function Badge({ tone = 'muted', children, dot }) {
 }
 
 /** 스탯 타일. 큰 숫자는 축약, 전체 자릿수는 title 과 표에서 확인 가능하게 둔다. */
-export function Tile({ label, value, unit, delta, deltaLabel, hint, tone }) {
+export function Tile({ label, value, unit, suffix, delta, deltaLabel, hint, tone }) {
   const dir = delta == null ? 'flat' : delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat'
   return (
     <div
@@ -53,7 +53,11 @@ export function Tile({ label, value, unit, delta, deltaLabel, hint, tone }) {
         {label}
         {tone && <i className="dot" style={{ width: 6, height: 6, borderRadius: '50%', background: toneColor(tone) }} />}
       </div>
-      <div className="v">{typeof value === 'number' ? abbrev(value) : value ?? '-'}</div>
+      <div className="v">
+        {typeof value === 'number' ? abbrev(value) : value ?? '-'}
+        {/* 명·건 같은 짧은 단위는 아랫줄이 아니라 숫자에 붙어야 한 덩어리로 읽힌다. */}
+        {suffix && <span className="vs">{suffix}</span>}
+      </div>
       {unit && <div className="u">{unit}</div>}
       {delta != null && (
         <div className={`d ${dir}`}>

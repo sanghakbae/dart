@@ -158,9 +158,9 @@ export default function EmploymentTab({ report, timeline }) {
             </Callout>
           )}
           <div className="grid grid-tiles">
-            <Tile label={`${latest.ym} 인원`} value={latest.headcount} unit="명" />
-            <Tile label="입사" value={latest.joined} unit="명" />
-            <Tile label="퇴사" value={latest.left} unit="명" />
+            <Tile label={`${latest.ym} 인원`} value={latest.headcount} suffix="명" />
+            <Tile label="입사" value={latest.joined} suffix="명" />
+            <Tile label="퇴사" value={latest.left} suffix="명" />
             {turnover && (
               <Tile
                 label="연간 퇴사율"
