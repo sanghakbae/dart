@@ -12,9 +12,15 @@ const ROLE = '대표이사|사내이사|사외이사|기타비상무이사|등�
 // 법인·기관 이름은 임원이 아니다.
 const NOT_PERSON = /(회계법인|법인|주식회사|유한회사|회사|은행|증권|보험|캐피탈|파트너스|조합|재단|기금|펀드|투자)$/
 
-export function parseShares(doc, notes) {
+/**
+ * @param {object} doc
+ * @param {object} notes
+ * @param {{rcps?:object|null, capital?:object|null}} [extra] 종류별 주식수를 만들 재료
+ */
+export function parseShares(doc, notes, extra = {}) {
   const text = doc.fullText
   const rows = doc.rows
+  const { rcps = null, capital = null } = extra
 
   const major = findMajorShareholder(text)
   const executives = findExecutiveHoldings(text)
@@ -25,14 +31,22 @@ export function parseShares(doc, notes) {
   const shares = {
     majorShareholder: major,
     executives,
-    authorizedShares: authorized?.value ?? null,
-    issuedShares: issued?.value ?? null,
-    issuedSharesPrior: issued?.prior ?? null,
+    authorizedShares: capital?.authorizedShares ?? authorized?.value ?? null,
+    // 자본금 주석의 발행주식수는 보통주만이다. 이름을 그대로 두면 뒤에서
+    // 총 주식수로 오해하므로, 의미가 드러나는 이름을 따로 둔다.
+    issuedShares: capital?.issuedShares ?? issued?.value ?? null,
+    issuedSharesPrior: capital?.priorPeriod?.issuedShares ?? issued?.prior ?? null,
     treasuryShares: treasury?.value ?? null,
+    parValue: capital?.parValue ?? null,
+    capitalStock: capital?.capitalStock ?? null,
+    capitalChanges: capital?.changes || [],
+    stockOptions: capital?.stockOptions || null,
     hasStockOption: /주식\s*선택권|스톡\s*옵션/.test(text),
     hasPreferred: /(전환상환우선주|종류주식|우선주)/.test(text),
     shareholders: findShareholderTable(rows),
   }
+
+  Object.assign(shares, composeShareCounts(shares, rcps, capital))
 
   // 근거 주석 — 숫자의 출처를 바로 읽을 수 있게 본문을 함께 보관한다.
   shares.sourceNotes = collectSourceNotes(notes, shares)
@@ -40,8 +54,44 @@ export function parseShares(doc, notes) {
     Boolean(major) ||
     executives.length > 0 ||
     shares.issuedShares != null ||
+    shares.preferredShares != null ||
+    shares.capitalChanges.length > 0 ||
     shares.shareholders.length > 0
   return shares
+}
+
+/**
+ * 주식 종류별 수를 맞춘다.
+ *
+ * 감사보고서는 이걸 한 곳에 모아 두지 않는다 — 보통주는 자본금 주석, 상환전환우선주는
+ * 부채 주석, 주식선택권은 또 다른 주석에 흩어져 있다. 그래서 여태 화면에는 보통주만
+ * 나왔고, 1주당 가치가 그만큼 과대였다.
+ *
+ *   보통주 4,000,000 + RCPS 685,800 = 총 4,685,800 (등기부와 일치)
+ *   + 주식선택권 133,800 = 완전희석 4,819,600
+ */
+function composeShareCounts(shares, rcps, capital) {
+  const common = shares.issuedShares
+  const preferred = rcps?.shares ?? null
+  const potential = capital?.stockOptions?.potentialShares ?? null
+
+  const total = common != null || preferred != null ? (common ?? 0) + (preferred ?? 0) : null
+  const diluted = total != null ? total + (potential ?? 0) : null
+
+  const byType = []
+  if (common != null) byType.push({ key: 'common', label: '보통주', shares: common })
+  if (preferred != null) byType.push({ key: 'preferred', label: '상환전환우선주', shares: preferred })
+
+  return {
+    commonShares: common,
+    preferredShares: preferred,
+    potentialShares: potential,
+    totalShares: total,
+    dilutedShares: diluted,
+    byType,
+    // 총 주식수를 보통주만으로 잡고 있었는지 — 화면에서 이 사실을 밝혀야 한다.
+    preferredHidden: preferred != null && preferred > 0,
+  }
 }
 
 /** "최대 주주 … 신동호는 2,717,600주(지분율 67.94%)" */

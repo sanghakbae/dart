@@ -183,7 +183,7 @@ function ShareCard({ shares, notes, curLabel }) {
         {major?.ratio != null && <Tile label="최대주주 지분율" value={pctText(major.ratio)} />}
         {shares.issuedShares != null && (
           <Tile
-            label="발행주식수"
+            label={shares.preferredHidden ? '보통주' : '발행주식수'}
             value={abbrev(shares.issuedShares)}
             unit={`${full(shares.issuedShares)}주`}
             delta={
@@ -194,6 +194,22 @@ function ShareCard({ shares, notes, curLabel }) {
             deltaLabel="vs 전기"
           />
         )}
+        {/* 우선주는 부채로 잡혀 자본금 주석에 없다. 따로 세지 않으면 화면에서 통째로 사라진다. */}
+        {shares.preferredShares != null && (
+          <Tile
+            label="상환전환우선주"
+            value={abbrev(shares.preferredShares)}
+            unit={`${full(shares.preferredShares)}주`}
+            tone="warn"
+          />
+        )}
+        {shares.totalShares != null && shares.preferredHidden && (
+          <Tile
+            label="총 발행주식수"
+            value={abbrev(shares.totalShares)}
+            unit={`${full(shares.totalShares)}주 · 등기부 기준`}
+          />
+        )}
         {shares.authorizedShares != null && (
           <Tile label="수권주식수" value={abbrev(shares.authorizedShares)} unit={`${full(shares.authorizedShares)}주`} />
         )}
@@ -201,6 +217,53 @@ function ShareCard({ shares, notes, curLabel }) {
           <Tile label="자기주식" value={abbrev(shares.treasuryShares)} unit={`${full(shares.treasuryShares)}주`} />
         )}
       </div>
+
+      {shares.capitalChanges?.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <h4 style={{ fontSize: 13.5, marginBottom: 8 }}>자본금 변동</h4>
+          <FinTable
+            columns={[
+              { key: 'shares', label: '주식수 변동' },
+              { key: 'capital', label: '자본금 변동' },
+              { key: 'kind', label: '성격' },
+            ]}
+            rows={shares.capitalChanges.map((c, i) => ({
+              label: c.label,
+              level: 1,
+              values: {
+                shares: c.shares,
+                capital: c.capital,
+                // 무상증자와 액면분할은 둘 다 주식수를 늘리지만 성격이 다르다.
+                // 뭉쳐 보면 "몇 배 늘었다" 만 남아 잘못 읽게 된다.
+                kind: c.capitalMoved ? '잉여금 자본전입' : '액면가 분할 (자본금 불변)',
+              },
+              key: `${c.kind}-${i}`,
+            }))}
+            note="주식수가 늘어난 사유입니다. 자본금이 함께 늘었으면 무상증자, 그대로면 액면분할입니다."
+          />
+        </div>
+      )}
+
+      {shares.stockOptions?.grants?.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <h4 style={{ fontSize: 13.5, marginBottom: 8 }}>
+            주식선택권 <span className="tnote">잠재주식 {full(shares.stockOptions.potentialShares)}주</span>
+          </h4>
+          <FinTable
+            columns={[
+              { key: 'exercisable', label: '행사가능 주식수' },
+              { key: 'strike', label: '행사가격' },
+              { key: 'grantDate', label: '부여일' },
+            ]}
+            rows={shares.stockOptions.grants.map((g) => ({
+              label: g.round,
+              level: 1,
+              values: { exercisable: g.exercisable ?? g.granted, strike: g.strike, grantDate: g.grantDate || '-' },
+            }))}
+            note="모두 행사되면 그만큼 주식수가 늘어납니다(완전희석)."
+          />
+        </div>
+      )}
 
       {executives.length > 0 && (
         <div style={{ marginTop: 16 }}>

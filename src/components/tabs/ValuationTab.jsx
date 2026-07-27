@@ -15,9 +15,11 @@ export default function ValuationTab({ report, timeline }) {
   const values = report?.values || {}
   const shares = report?.shares || null
 
+  const rcps = report?.rcps || null
+
   const v = useMemo(
-    () => valuate(values, timeline?.rows || [], shares, multiples),
-    [values, timeline, shares, multiples]
+    () => valuate(values, timeline?.rows || [], shares, multiples, rcps),
+    [values, timeline, shares, multiples, rcps]
   )
 
   if (!v.available) {
@@ -52,19 +54,38 @@ export default function ValuationTab({ report, timeline }) {
             label="중앙값"
             value={v.median}
             unit={`${full(Math.round(v.median))}원`}
-            hint="아래 방법들의 중앙값"
+            hint={
+              v.methods.some((m) => m.key === 'round')
+                ? '장부가 기반 방법들과 투자 발행가 기준을 함께 놓고 낸 중앙값입니다. 성격이 다른 값이 섞여 있습니다.'
+                : '아래 방법들의 중앙값'
+            }
           />
           <Tile label="가장 낮은 추정" value={v.range.min} unit={`${full(Math.round(v.range.min))}원`} />
           <Tile label="가장 높은 추정" value={v.range.max} unit={`${full(Math.round(v.range.max))}원`} />
           {v.issuedShares && (
             <Tile
-              label="1주당 (중앙값)"
+              label="보통주 1주당 (중앙값)"
               value={`${Math.round(v.median / v.issuedShares).toLocaleString('ko-KR')}원`}
-              unit={`발행주식 ${full(v.issuedShares)}주`}
+              unit={`보통주 ${full(v.issuedShares)}주`}
             />
           )}
         </div>
       </section>
+
+      {v.shareCounts.preferred > 0 && (
+        <Callout>
+          <span>
+            이 회사의 발행주식은 <strong>보통주 {full(v.shareCounts.common)}주 + 상환전환우선주{' '}
+            {full(v.shareCounts.preferred)}주 = 총 {full(v.shareCounts.total)}주</strong>입니다.
+            상환전환우선주는 회계상 <strong>부채</strong>라 자본총계에서 이미 빠져 있어, 위 방법들이 내놓는 값은
+            보통주 몫입니다. 그래서 1주당 값도 보통주 수로 나눴습니다.
+            {v.shareCounts.potential > 0 && (
+              <> 주식선택권 {full(v.shareCounts.potential)}주까지 더한 완전희석 주식수는{' '}
+              {full(v.shareCounts.diluted)}주입니다.</>
+            )}
+          </span>
+        </Callout>
+      )}
 
       <Card title="방법별 계산" sub="가정과 산식을 그대로 드러냅니다" tight>
         <FinTable
@@ -79,11 +100,11 @@ export default function ValuationTab({ report, timeline }) {
             level: 0,
             values: {
               value: m.value,
-              perShare: v.issuedShares ? m.value / v.issuedShares : null,
+              perShare: m.perShare ?? (v.issuedShares ? m.value / v.issuedShares : null),
               basis: m.basis,
             },
           }))}
-          note="1주당 값은 발행주식수를 인식한 경우에만 나옵니다."
+          note="1주당 값은 보통주 수로 나눈 값입니다. 발행가 기준은 총 발행주식수(우선주 포함)로 계산합니다."
         />
         <div style={{ padding: 'clamp(12px, 2vw, 20px)', borderTop: '1px solid var(--border)', display: 'grid', gap: 12 }}>
           {v.methods.map((m) => (
@@ -92,6 +113,7 @@ export default function ValuationTab({ report, timeline }) {
                 <strong>{m.label}</strong>
                 <span style={{ fontVariantNumeric: 'tabular-nums' }}>{abbrev(m.value)}</span>
                 {m.adjustable && <Badge tone="info">배수 조정 가능</Badge>}
+                {m.asOf && <Badge tone="warn">{m.asOf} 기준</Badge>}
               </div>
               <div style={{ color: 'var(--text-3)', marginTop: 2 }}>{m.detail}</div>
               {m.note && <div style={{ color: 'var(--text-2)', marginTop: 4 }}>{m.note}</div>}
@@ -136,7 +158,19 @@ export default function ValuationTab({ report, timeline }) {
             { label: '부채총계', level: 1, values: { v: v.inputs.liabilities } },
             { label: '차입금 (단기+장기)', level: 1, values: { v: v.inputs.debt } },
             { label: '현금및현금성자산', level: 1, values: { v: v.inputs.cash } },
-            { label: '발행주식수', level: 1, values: { v: v.issuedShares } },
+            { label: '보통주', level: 1, values: { v: v.shareCounts.common } },
+            ...(v.shareCounts.preferred
+              ? [
+                  { label: '상환전환우선주', level: 1, values: { v: v.shareCounts.preferred } },
+                  { label: '총 발행주식수', level: 0, values: { v: v.shareCounts.total } },
+                ]
+              : []),
+            ...(v.shareCounts.potential
+              ? [
+                  { label: '주식선택권 (잠재주식)', level: 1, values: { v: v.shareCounts.potential } },
+                  { label: '완전희석 주식수', level: 1, values: { v: v.shareCounts.diluted } },
+                ]
+              : []),
           ]}
         />
       </Card>

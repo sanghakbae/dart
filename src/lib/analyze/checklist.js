@@ -382,6 +382,91 @@ export function buildChecklist(report, timeline, notes) {
     })
   }
 
+  // ── 7. 상환전환우선주 ──────────────────────────────────
+  //
+  // 재무비율만 보면 이게 안 보인다. RCPS 는 부채로 잡히는데 부채요소만
+  // 재무상태표에 이름이 드러나고, 전환권·조기상환권은 '파생상품부채' 라는
+  // 다른 이름으로 앉아 있다. 둘을 합치면 자본총계를 넘기는 일이 흔하다.
+  const rcps = report?.rcps
+  if (rcps?.found) {
+    const equity = cur('totalEquity')
+    const burden = rcps.totalLiability
+    if (burden != null) {
+      const overEquity = equity != null && burden > equity
+      add({
+        id: 'rcpsBurden',
+        group: '상환전환우선주',
+        title: 'RCPS 관련 부채 규모',
+        status: overEquity ? S.bad : S.warn,
+        value: won(burden),
+        detail:
+          `부채요소 ${won(rcps.liability?.carrying)} + 파생상품부채 ${won(rcps.derivative?.current)}` +
+          (equity != null ? ` · 자본총계 ${won(equity)}` : ''),
+        why:
+          '상환전환우선주는 자본이 아니라 부채입니다. 전환권·조기상환권은 파생상품부채라는 다른 이름으로 따로 잡혀 ' +
+          '재무상태표만 훑으면 절반도 안 보입니다. 전환되면 사라지지만, 상환되면 그대로 현금이 나갑니다.',
+      })
+    }
+
+    if (rcps.putStartDate) {
+      const days = Math.round((Date.parse(`${rcps.putStartDate}T00:00:00`) - Date.now()) / 86_400_000)
+      const open = Number.isFinite(days) && days <= 0
+      const soon = Number.isFinite(days) && days > 0 && days < 365
+      add({
+        id: 'rcpsPut',
+        group: '상환전환우선주',
+        title: '상환청구 가능 시점',
+        status: open || soon ? S.bad : S.warn,
+        value: open ? `${rcps.putStartDate} (이미 열림)` : `${rcps.putStartDate}${soon ? ` · ${days}일 남음` : ''}`,
+        detail: rcps.putPeriod || null,
+        why:
+          '투자자가 상환을 청구하면 원금에 보장수익률을 붙인 금액을 현금으로 내줘야 합니다. ' +
+          '재무상태표의 장부금액보다 훨씬 큰 금액이라, 현금성자산과 견줘 봐야 합니다.',
+      })
+    }
+
+    const rate = rcps.statedRate ?? rcps.impliedRate
+    if (rate != null) {
+      add({
+        id: 'rcpsRate',
+        group: '상환전환우선주',
+        title: '보장 수익률',
+        status: rate >= 8 ? S.bad : rate >= 5 ? S.warn : S.info,
+        value: `연복리 ${rate}%`,
+        detail:
+          rcps.dividend && /0\s*%/.test(rcps.dividend)
+            ? `배당은 ${rcps.dividend} 이지만 상환할증금 ${won(rcps.liability?.premium)} 이 수익률을 대신합니다.`
+            : rcps.redemption || null,
+        why: '배당률이 0% 라도 상환할증금 형태로 수익률이 보장돼 있으면 실질 이자부담은 그대로입니다.',
+      })
+    }
+
+    if (rcps.accretion?.current != null) {
+      const profit = cur('netIncome')
+      add({
+        id: 'rcpsAccretion',
+        group: '상환전환우선주',
+        title: '전환권조정 상각 (이자비용)',
+        status: profit != null && profit > 0 && rcps.accretion.current > profit ? S.bad : S.warn,
+        value: won(rcps.accretion.current),
+        detail: profit != null ? `당기순이익 ${won(profit)}` : null,
+        why: '현금은 나가지 않지만 당기순이익을 그만큼 깎습니다. 이익이 이 금액보다 작으면 회계상 적자의 원인이 여기 있습니다.',
+      })
+    }
+
+    if (rcps.refixing) {
+      add({
+        id: 'rcpsRefixing',
+        group: '상환전환우선주',
+        title: '전환비율 조정 (리픽싱)',
+        status: S.warn,
+        value: '조항 있음',
+        detail: rcps.refixing,
+        why: '주가·공모가가 낮아지면 전환주식수가 늘어 기존 주주의 지분이 더 희석됩니다.',
+      })
+    }
+  }
+
   const groups = []
   for (const item of items) {
     let g = groups.find((x) => x.name === item.group)

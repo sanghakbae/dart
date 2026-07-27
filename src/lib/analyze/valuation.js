@@ -21,8 +21,9 @@ const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
  * @param {Array} timelineRows 연도별 값 (오래된 → 최근)
  * @param {object} shares 주주·주식 정보
  * @param {object} multiples 사용자가 정한 배수
+ * @param {object|null} rcps 상환전환우선주 주석 (있으면 발행가 기준 밸류를 더한다)
  */
-export function valuate(values, timelineRows = [], shares = null, multiples = DEFAULT_MULTIPLES) {
+export function valuate(values, timelineRows = [], shares = null, multiples = DEFAULT_MULTIPLES, rcps = null) {
   const equity = num(values?.totalEquity?.current)
   const netIncome = num(values?.netIncome?.current)
   const operating = num(values?.operatingProfit?.current)
@@ -30,7 +31,12 @@ export function valuate(values, timelineRows = [], shares = null, multiples = DE
   const liabilities = num(values?.totalLiabilities?.current)
   const cash = num(values?.cash?.current)
   const debt = (num(values?.shortTermDebt?.current) ?? 0) + (num(values?.longTermDebt?.current) ?? 0)
-  const issued = num(shares?.issuedShares) || null // 0주는 값이 없는 것과 같다
+  // 1주당 값의 분모.
+  //
+  // 상환전환우선주는 부채로 잡혀 자본총계에서 이미 빠져 있다. 그래서 위 방법들이
+  // 내놓는 값은 '보통주 몫' 이고, 나눌 때도 보통주 수로 나눠야 앞뒤가 맞는다.
+  // 총 주식수(보통주+우선주)로 나누면 분자와 분모의 기준이 어긋난다.
+  const issued = num(shares?.commonShares ?? shares?.issuedShares) || null // 0주는 값이 없는 것과 같다
 
   const methods = []
 
@@ -87,6 +93,10 @@ export function valuate(values, timelineRows = [], shares = null, multiples = DE
     })
   }
 
+  // 4) 최근 발행가 기준 — 투자자가 실제로 낸 값이다.
+  const round = roundValue(rcps, shares)
+  if (round) methods.push(round)
+
   // 원 단위 소수점은 의미가 없다.
   for (const m of methods) if (num(m.value) != null) m.value = Math.round(m.value)
   const usable = methods.filter((m) => num(m.value) != null)
@@ -100,9 +110,56 @@ export function valuate(values, timelineRows = [], shares = null, multiples = DE
     methods: usable,
     range,
     median,
-    perShare: issued ? usable.map((m) => ({ key: m.key, label: m.label, value: m.value / issued })) : [],
+    // 방법마다 분모가 다르다. 발행가 기준은 총 주식수로 매긴 값이라 보통주로 나누면
+    // 발행가(17,500원)가 아닌 엉뚱한 값(20,500원)이 나온다.
+    perShare: usable
+      .map((m) => ({ key: m.key, label: m.label, value: m.perShare ?? (issued ? m.value / issued : null) }))
+      .filter((x) => x.value != null),
     issuedShares: issued,
+    shareCounts: {
+      common: num(shares?.commonShares) ?? issued,
+      preferred: num(shares?.preferredShares),
+      total: num(shares?.totalShares),
+      potential: num(shares?.potentialShares),
+      diluted: num(shares?.dilutedShares),
+    },
     inputs: { equity, netIncome, operating, assets, liabilities, cash, debt },
+  }
+}
+
+/**
+ * 상환전환우선주 발행가로 되짚은 기업가치 (post-money).
+ *
+ * 비상장사는 DART 에 투자 공시를 하지 않아 라운드 정보를 얻을 데가 여기뿐이다.
+ * 장부가 기반 방법들이 실제 투자 단가와 크게 벌어지는 게 보통인데
+ * (무하유: 순자산 108억 vs 발행가 기준 820억), 어느 쪽이 옳다기보다
+ * '회계장부' 와 '투자자가 매긴 값' 이 원래 다른 것이다.
+ *
+ * 오래된 라운드일 수 있으므로 기준일을 반드시 함께 낸다.
+ */
+function roundValue(rcps, shares) {
+  const price = num(rcps?.issuePrice)
+  const total = num(shares?.totalShares)
+  if (!price || !total) return null
+
+  const year = rcps.issueDate ? rcps.issueDate.slice(0, 4) : null
+  const diluted = num(shares?.dilutedShares)
+  return {
+    key: 'round',
+    label: `발행가 기준${year ? ` (${year}년 라운드)` : ''}`,
+    value: price * total,
+    basis: '주당발행가액 × 총 발행주식수',
+    detail:
+      `${fmt(price)} × ${total.toLocaleString('ko-KR')}주` +
+      (diluted && diluted !== total ? ` · 완전희석 ${diluted.toLocaleString('ko-KR')}주 기준 ${fmt(price * diluted)}` : ''),
+    note:
+      `${rcps.issueDate || '발행 시점'} 상환전환우선주 발행가로 되짚은 값입니다. ` +
+      '투자자가 그 시점에 실제로 매긴 가격이라 장부가보다 크게 높은 것이 보통이지만, ' +
+      '그 뒤 실적·시장 상황은 반영돼 있지 않습니다.',
+    asOf: rcps.issueDate || null,
+    issuePrice: price,
+    // 이 방법의 1주당은 발행가 그 자체다.
+    perShare: price,
   }
 }
 

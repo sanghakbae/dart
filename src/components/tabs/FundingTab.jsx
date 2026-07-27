@@ -7,6 +7,7 @@ import { loadFunding, saveFunding } from '../../lib/storage'
 import { hasProxy } from '../../lib/proxyBase.js'
 import { abbrev, full } from '../../lib/format'
 import { useCachedRemote } from '../../lib/useCachedRemote'
+import RcpsCard from '../RcpsCard'
 
 /**
  * 자본조달 이력.
@@ -49,6 +50,10 @@ export default function FundingTab({ report }) {
     [rounds]
   )
 
+  // 주석에서 읽은 상환전환우선주. DART 공시 유무와 무관하게 늘 보여준다 —
+  // 비상장사는 이게 유일한 라운드 정보다.
+  const rcpsCard = <RcpsCard rcps={report?.rcps} shares={report?.shares} />
+
   if (loading) return <Card><div className="tnote">저장된 자본조달 정보를 확인하는 중…</div></Card>
 
   const bar = (
@@ -57,7 +62,9 @@ export default function FundingTab({ report }) {
 
   if (!rounds.length) {
     return (
-      <Card title="자본조달" right={fetchedAt ? bar : null}>
+      <div className="stack-lg">
+        {rcpsCard}
+        <Card title="DART 자본조달 공시" right={fetchedAt ? bar : null}>
         <RemoteEmpty
           source="DART"
           title={fetchedAt ? '자본조달 공시가 없습니다' : '아직 받아오지 않았습니다'}
@@ -67,15 +74,17 @@ export default function FundingTab({ report }) {
           error={error || (!hasProxy ? '배포본에는 조회용 프록시 주소가 설정되지 않았습니다.' : null)}
         >
           {fetchedAt
-            ? '비상장 법인은 투자 유치를 공시할 의무가 없어 DART 에 나타나지 않습니다. 감사보고서 주석의 상환전환우선주·자본금 변동으로만 짐작할 수 있습니다.'
+            ? '비상장 법인은 투자 유치를 공시할 의무가 없어 DART 에 나타나지 않습니다. 위의 감사보고서 주석이 사실상 유일한 라운드 정보입니다.'
             : '공시마다 원문을 한 번씩 받아야 해서 자동으로 받지 않습니다. 한 번 받아오면 DB 에 저장해 두고 씁니다.'}
         </RemoteEmpty>
-      </Card>
+        </Card>
+      </div>
     )
   }
 
   return (
     <div className="stack-lg">
+      {rcpsCard}
       <Card
         title="자본조달 요약"
         sub={`공시 ${data.total}건 · 해석 ${data.parsed}건 → 조달 ${rounds.length}건`}

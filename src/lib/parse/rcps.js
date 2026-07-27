@@ -1,0 +1,278 @@
+// 상환전환우선주(RCPS).
+//
+// 감사보고서에서 RCPS 는 자본이 아니라 부채로 잡힌다. 그래서 자본금 주석의
+// 발행주식수에는 RCPS 주식이 통째로 빠져 있다 — 무하유는 자본금 주석이
+// 4,000,000주인데 등기부는 4,685,800주다. 685,800주가 화면 어디에도 없었고,
+// 그 수로 나눈 1주당 가치는 14.6% 과대였다.
+//
+// 게다가 이 주석에는 다른 데서 못 얻는 것들이 있다.
+//   - 주당발행가액 → 투자 라운드의 밸류에이션 (비상장사는 DART 공시가 없다)
+//   - 상환금액 조항 → 보장 IRR
+//   - 상환청구 기간 → 언제부터 투자자가 돈을 빼갈 수 있는지
+//   - 전환권조정 상각 → 현금이 안 나가는데 순이익을 깎는 이자비용
+//
+// 주석 번호는 문서마다 다르다(무하유 연결 14, 별도 15). 제목으로 찾는다.
+
+import { parseAmount } from './numbers.js'
+import { noteZone, normLabel } from './zone.js'
+
+// 제목 전체가 이것이어야 한다. 끝을 열어 두면 재무상태표의
+// 「상환전환우선주부채」 항목 행까지 제목으로 걸린다.
+const HEAD = /^\d{1,2}\s*\.\s*(상환전환우선주|전환상환우선주)(식|부채)?\s*$/
+
+/** (1) 부채 내역 표 — 당기말·전기말·전기초 순으로 실린다. */
+const LIABILITY = [
+  [/^(상환전환우선주|전환상환우선주)$/, 'face', '상환전환우선주'],
+  [/^상환할증금$/, 'premium', '상환할증금'],
+  [/^전환권조정$/, 'conversionAdj', '전환권조정'],
+  [/^소계$/, 'carrying', '소계'],
+  [/^차감[:：]?유동성대체$/, 'currentTransfer', '유동성대체'],
+]
+
+/** (2) 세부내역 표 — 한 행이 한 조건이고, 열이 종류(제1종·제2종)다. */
+const DETAIL = [
+  [/^대상자/, 'investors'],
+  [/^주당발행가액/, 'issuePrice'],
+  [/^발행주식수/, 'shares'],
+  [/^발행일/, 'issueDate'],
+  [/^의결권/, 'voting'],
+  [/^존속기간/, 'term'],
+  [/^배당/, 'dividend'],
+  [/^전환청구자/, 'conversionClaimant'],
+  [/^전환비율$/, 'conversionRatio'],
+  [/^전환비율의조정/, 'refixing'],
+  [/^전환청구기간/, 'conversionPeriod'],
+  [/^상환청구권보유자/, 'putHolder'],
+  [/^상환청구기간/, 'putPeriod'],
+  [/^상환금액/, 'redemption'],
+]
+
+/**
+ * @param {{rows: {cells:string[]}[]}} doc
+ * @returns {null|object}
+ */
+export function parseRcps(doc) {
+  const rows = (doc?.rows || []).map((r) => (r.cells || []).map((c) => String(c).trim()))
+  const zone = noteZone(rows, HEAD)
+  if (!zone) return null
+
+  const liability = readLiability(zone)
+  const series = readSeries(zone)
+  const accretion = readAccretion(zone)
+  const derivative = readDerivative(zone)
+  const pnl = readPnl(zone)
+
+  // 표를 하나도 못 읽었으면 이 주석이 아니거나 서식이 다른 것이다.
+  if (!series.length && !liability) return null
+
+  const totalShares = sumOf(series, 'shares')
+  const issuePrice = series.find((s) => s.issuePrice != null)?.issuePrice ?? null
+  const raised = liability?.face ?? (issuePrice != null && totalShares != null ? issuePrice * totalShares : null)
+
+  return {
+    found: true,
+    series,
+    shares: totalShares,
+    issuePrice,
+    raised,
+    liability,
+    accretion,
+    derivative,
+    pnl,
+    // 이 회사 몫으로 잡힌 RCPS 관련 부채 전부. 부채요소만 보면 절반도 안 보인다
+    // (무하유는 부채요소 66.6억 + 파생상품 101.8억 = 168.4억이고 자본총계가 108.5억이다).
+    totalLiability: sumNullable([liability?.carrying, derivative?.current]),
+    ...terms(series, liability),
+  }
+}
+
+/** (1) 부채 내역. 열은 당기말·전기말·전기초 순이다. */
+function readLiability(zone) {
+  const out = {}
+  const prior = {}
+  for (const cells of zone) {
+    if (cells.length < 2) continue
+    const label = normLabel(cells[0])
+    const hit = LIABILITY.find(([re]) => re.test(label))
+    if (!hit || out[hit[1]] != null) continue
+    const nums = cells.slice(1).map(parseAmount).filter((v) => v != null)
+    if (!nums.length) continue
+    out[hit[1]] = nums[0]
+    if (nums[1] != null) prior[hit[1]] = nums[1]
+  }
+  if (!Object.keys(out).length) return null
+  // 전액 유동성대체 = 1년 안에 상환청구가 열려 있다는 뜻이다. 위험 신호로 쓴다.
+  out.allCurrent = out.currentTransfer != null && out.carrying != null
+    && Math.abs(Math.abs(out.currentTransfer) - out.carrying) < 1
+  out.prior = Object.keys(prior).length ? prior : null
+  return out
+}
+
+/**
+ * (2) 세부내역. 열 하나가 종류주식 하나다.
+ * 표 머리("구 분 | 제1종 상환전환우선주")에서 종류 이름을 먼저 잡는다.
+ */
+function readSeries(zone) {
+  let names = null
+  const byKey = new Map()
+
+  for (const cells of zone) {
+    if (cells.length < 2) continue
+    const label = normLabel(cells[0])
+
+    if (!names && /^구분$/.test(label) && /우선주/.test(cells.slice(1).join(' '))) {
+      names = cells.slice(1).map((c) => c.trim()).filter(Boolean)
+      continue
+    }
+    const hit = DETAIL.find(([re]) => re.test(label))
+    if (!hit || byKey.has(hit[1])) continue
+    byKey.set(hit[1], cells.slice(1))
+  }
+  if (!byKey.size) return []
+
+  const width = Math.max(names?.length || 0, ...[...byKey.values()].map((v) => v.length))
+  const out = []
+  for (let i = 0; i < width; i++) {
+    const pick = (k) => byKey.get(k)?.[i] ?? null
+    const raw = Object.fromEntries([...byKey.keys()].map((k) => [k, pick(k)]))
+    out.push({
+      name: names?.[i] || `제${i + 1}종 상환전환우선주`,
+      ...raw,
+      issuePrice: parseAmount(String(raw.issuePrice || '').replace(/원/g, '')),
+      shares: parseAmount(String(raw.shares || '').replace(/주/g, '')),
+      issueDate: readDate(raw.issueDate),
+    })
+  }
+  // 값이 하나도 없는 열(빈 칸)은 종류가 아니다.
+  return out.filter((s) => s.shares != null || s.issuePrice != null || s.issueDate)
+}
+
+/** (3) 변동내역 — 상각액이 곧 당기 이자비용이다. 현금은 나가지 않는다. */
+function readAccretion(zone) {
+  for (const cells of zone) {
+    if (cells.length < 2) continue
+    if (!/^상각$/.test(normLabel(cells[0]))) continue
+    const nums = cells.slice(1).map(parseAmount).filter((v) => v != null)
+    if (!nums.length) continue
+    return { current: nums[0], prior: nums[1] ?? null }
+  }
+  return null
+}
+
+/**
+ * (4) 전환권·조기상환권 파생상품부채. 부채요소와 따로 잡히는데 대개 이쪽이 더 크다.
+ *
+ * 같은 주석 본문에도 이 말이 나온다 — "전환권 및 조기상환권은 파생상품부채로
+ * 계상되어 있습니다". 그 문장에 걸리는 바람에 101억을 통째로 놓쳤다.
+ * 표의 라벨 칸은 그 말로 끝나고 짧다. 숫자를 못 찾으면 다음 후보로 넘어간다.
+ */
+function readDerivative(zone) {
+  for (let i = 0; i < zone.length; i++) {
+    const label = normLabel(zone[i][0])
+    if (label.length > 30 || !/파생상품부채$/.test(label)) continue
+    // 라벨 행 자체가 비어 있고 바로 아래 행에 금액이 오는 서식이 흔하다.
+    for (let j = i; j < Math.min(i + 4, zone.length); j++) {
+      const nums = zone[j].slice(1).map(parseAmount).filter((v) => v != null)
+      if (nums.length) return { current: nums[0], prior: nums[1] ?? null, initial: nums[3] ?? null }
+    }
+  }
+  return null
+}
+
+/**
+ * (5) RCPS 관련 손익.
+ *
+ * 파생상품 평가손익은 회사가 장사를 잘했는지와 무관하게 순이익을 흔든다
+ * (무하유는 당기 9.9억 손실). 회사가 그걸 뺀 이익을 직접 밝히는 경우가 많아
+ * 그대로 가져다 쓴다 — 우리가 임의로 조정하는 것보다 낫다.
+ */
+function readPnl(zone) {
+  const out = {}
+  for (const cells of zone) {
+    if (cells.length < 2) continue
+    const label = normLabel(cells[0])
+    const key = /^파생금융상품평가(손실|이익|손익)$/.test(label)
+      ? 'derivativeLoss'
+      : /^파생금융상품평가손익제외/.test(label)
+        ? 'pretaxExDerivative'
+        : /^법인세비용차감전순이익/.test(label)
+          ? 'pretax'
+          : null
+    if (!key || out[key] != null) continue
+    const nums = cells.slice(1).map(parseAmount).filter((v) => v != null)
+    if (nums.length) out[key] = nums[0]
+  }
+  return out.pretaxExDerivative != null || out.derivativeLoss != null ? out : null
+}
+
+/**
+ * 조항 문장에서 숫자를 뽑는다.
+ *
+ * 보장수익률은 두 곳에서 나온다 — 상환금액 조항의 "연복리 7%" 와,
+ * 상환할증금을 원금으로 역산한 값. 둘을 맞춰 보면 어느 쪽 해석이 맞는지 알 수 있다.
+ */
+function terms(series, liability) {
+  const s = series[0] || {}
+  const termYears = firstNumber(s.term, /(\d+(?:\.\d+)?)\s*년/)
+  const putAfterYears = firstNumber(s.putPeriod, /(\d+(?:\.\d+)?)\s*년이?\s*경과/)
+  const statedRate = firstNumber(s.redemption, /연\s*복리\s*([\d.]+)\s*%/)
+    ?? firstNumber(s.redemption, /연\s*([\d.]+)\s*%/)
+
+  const face = liability?.face ?? null
+  const premium = liability?.premium ?? null
+  // (원금+할증금 ÷ 원금)^(1/존속기간) − 1
+  const impliedRate =
+    face && premium && termYears ? (((face + premium) / face) ** (1 / termYears) - 1) * 100 : null
+
+  return {
+    issueDate: s.issueDate || null,
+    termYears,
+    maturityDate: addYears(s.issueDate, termYears),
+    putAfterYears,
+    putStartDate: addYears(s.issueDate, putAfterYears),
+    statedRate,
+    impliedRate: impliedRate != null ? Math.round(impliedRate * 100) / 100 : null,
+    // 배당 0% 라도 상환할증금이 수익률을 대신하는 구조가 흔하다. 둘을 같이 봐야 한다.
+    dividend: s.dividend || null,
+    refixing: s.refixing || null,
+    conversionRatio: s.conversionRatio || null,
+    putPeriod: s.putPeriod || null,
+    redemption: s.redemption || null,
+  }
+}
+
+/** 상환청구가 열리는 시점의 상환금액 = 원금 × (1+r)^경과연수 */
+export function redemptionAt(rcps, years) {
+  const face = rcps?.liability?.face
+  const rate = rcps?.statedRate ?? rcps?.impliedRate
+  if (!face || !rate || !years) return null
+  return Math.round(face * (1 + rate / 100) ** years)
+}
+
+function readDate(raw) {
+  const s = String(raw || '')
+  const m = /(\d{4})\s*[-.년/]\s*(\d{1,2})\s*[-.월/]\s*(\d{1,2})/.exec(s)
+  if (!m) return null
+  return `${m[1]}-${String(m[2]).padStart(2, '0')}-${String(m[3]).padStart(2, '0')}`
+}
+
+function addYears(date, years) {
+  if (!date || !years) return null
+  const [y, m, d] = date.split('-').map(Number)
+  return `${y + Math.round(years)}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+}
+
+function firstNumber(text, re) {
+  const m = re.exec(String(text || ''))
+  return m ? Number(m[1]) : null
+}
+
+function sumOf(list, key) {
+  const nums = list.map((x) => x[key]).filter((v) => v != null)
+  return nums.length ? nums.reduce((a, b) => a + b, 0) : null
+}
+
+function sumNullable(list) {
+  const nums = list.filter((v) => v != null)
+  return nums.length ? nums.reduce((a, b) => a + b, 0) : null
+}

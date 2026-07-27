@@ -4,6 +4,8 @@ import { parseNarrative } from './opinion.js'
 import { parseStatements } from './statements.js'
 import { parseNotes } from './notes.js'
 import { parseShares } from './shares.js'
+import { parseRcps } from './rcps.js'
+import { parseCapital } from './capital.js'
 import { parseSubmission } from './submission.js'
 import { parsePayroll } from './payroll.js'
 import { computeRatios, buildInsights } from '../analyze/ratios.js'
@@ -51,7 +53,11 @@ export async function analyzeFile(file, onProgress) {
   const notes = parseNotes(doc)
 
   onProgress?.(0.93, '주주·주식 정보 정리 중')
-  const shares = parseShares(doc, notes)
+  // 주식 종류별 수는 한 주석에 모여 있지 않다. 자본금 주석(보통주)과
+  // 상환전환우선주 주석(우선주)을 따로 읽어 합쳐야 등기부의 총수와 맞는다.
+  const rcps = parseRcps(doc)
+  const capital = parseCapital(doc)
+  const shares = parseShares(doc, notes, { rcps, capital })
 
   // 인건비. 국민연금 인원과 나누면 1인당 인건비가 나온다(고용 탭).
   const payroll = parsePayroll(doc)
@@ -80,6 +86,8 @@ export async function analyzeFile(file, onProgress) {
     values: statements.values,
     blocks: statements.blocks.map(serializeBlock),
     shares,
+    rcps,
+    capital,
     payroll,
     ratios,
     insights,
