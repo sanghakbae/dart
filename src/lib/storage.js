@@ -273,6 +273,38 @@ export async function saveEmployment(companyKey, payload) {
 
 export { EMPLOYMENT_TTL }
 
+// ── 자본조달 이력 캐시 ────────────────────────────────────────
+// 라운드 하나에 공시 원문을 한 번씩 받아야 해서 조회가 무겁다. 하루 캐시한다.
+const FUNDING_TTL = 24 * 60 * 60 * 1000
+const fundingDoc = (ck) => doc(db, COL, ck, 'funding', 'latest')
+
+export async function loadFunding(companyKey) {
+  if (!usesFirestore || !companyKey) return null
+  try {
+    const snap = await getDoc(fundingDoc(companyKey))
+    if (!snap.exists()) return null
+    const data = snap.data()
+    // 빈 결과가 캐시로 굳으면 하루 동안 '공시 없음' 이 그대로 남는다.
+    const empty = !Array.isArray(data.rounds) || data.rounds.length === 0
+    return { ...data, stale: empty || Date.now() - (data.fetchedAt || 0) > FUNDING_TTL }
+  } catch {
+    return null
+  }
+}
+
+export async function saveFunding(companyKey, payload) {
+  if (!usesFirestore || !companyKey) return { saved: false, warning: null }
+  try {
+    await setDoc(fundingDoc(companyKey), sanitize({ ...payload, fetchedAt: Date.now() }))
+    return { saved: true, warning: null }
+  } catch (e) {
+    return { saved: false, warning: firestoreHint(e) }
+  }
+}
+
+export { FUNDING_TTL }
+
+
 export async function loadContent(companyKey, reportId) {
   if (!usesFirestore) return null
   return loadContentFromFirestore(companyKey, reportId)

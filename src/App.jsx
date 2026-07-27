@@ -23,6 +23,7 @@ import RatioTab from './components/tabs/RatioTab'
 import ValuationTab from './components/tabs/ValuationTab'
 import ChecklistTab from './components/tabs/ChecklistTab'
 import EmploymentTab from './components/tabs/EmploymentTab'
+import FundingTab from './components/tabs/FundingTab'
 import NotesTab from './components/tabs/NotesTab'
 import RawTab from './components/tabs/RawTab'
 import { fileSize } from './lib/format'
@@ -35,6 +36,7 @@ const TABS = [
   { key: 'ratio', label: '재무비율' },
   { key: 'valuation', label: '기업가치' },
   { key: 'employment', label: '고용' },
+  { key: 'funding', label: '투자' },
   { key: 'checklist', label: '점검' },
   { key: 'notes', label: '주석' },
   { key: 'raw', label: '원문' },
@@ -530,6 +532,7 @@ export default function App() {
                   {tab === 'ratio' && <RatioTab report={mergedActive} timeline={timeline} />}
                   {tab === 'valuation' && <ValuationTab report={mergedActive} timeline={timeline} />}
                   {tab === 'employment' && <EmploymentTab report={mergedActive} timeline={timeline} />}
+                  {tab === 'funding' && <FundingTab report={mergedActive} />}
                   {tab === 'checklist' && (
                     <ChecklistTab report={mergedActive} timeline={timeline} notes={activeContent?.notes} loading={contentLoading} />
                   )}

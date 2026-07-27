@@ -66,6 +66,15 @@ service cloud.firestore {
         allow delete: if signedIn();
       }
 
+      // 자본조달 이력 캐시(하루 1회 갱신). 고용 캐시와 같은 성격이다.
+      match /funding/{docId} {
+        allow read: if signedIn();
+        allow create, update: if signedIn()
+          && request.resource.data.keys().hasAll(['fetchedAt'])
+          && request.resource.data.fetchedAt is int;
+        allow delete: if signedIn();
+      }
+
       match /reports/{reportId} {
         allow read: if signedIn();
         allow delete: if signedIn();
