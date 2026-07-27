@@ -12,6 +12,7 @@
 
 import { handleDart } from './dart-handler.mjs'
 import { handleNps } from './nps-handler.mjs'
+import { handleHealth } from './health-handler.mjs'
 
 const ALLOWED = [
   'https://dart.sanghak.kr',
@@ -38,12 +39,20 @@ export default {
     const origin = request.headers.get('origin')
     const allowed = allowOrigin(origin, env.ALLOWED_ORIGINS)
 
+    // /health 는 Worker 자체가 살아 있는지 보는 용도다. 상류를 부르지 않는다.
     if (url.pathname === '/health') {
       return json(
         { ok: true, dart: Boolean(env.DART_API_KEY), nps: Boolean(env.NPS_API_KEY) },
         200,
         allowed ? { 'access-control-allow-origin': allowed } : {}
       )
+    }
+
+    // /api/health 는 상류를 실제로 한 번씩 불러 본 결과를 준다(화면 상단 상태 칩).
+    if (url.pathname === '/api/health') {
+      const res = await handleHealth(request, env)
+      if (res && allowed) res.headers.set('access-control-allow-origin', allowed)
+      return res
     }
 
     const isDart = url.pathname.startsWith('/api/dart/')

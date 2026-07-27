@@ -114,19 +114,20 @@ export const usesFirestore = Boolean(isFirebaseConfigured && db)
  */
 export function backendLabel(state) {
   if (!usesFirestore) {
-    return { mode: 'local', label: 'DB 설정 없음', hint: 'Firebase 설정이 없어 저장할 수 없습니다. .env 의 VITE_FIREBASE_* 를 확인해 주세요.' }
+    return { mode: 'local', label: 'DB 설정 없음', short: 'DB', hint: 'Firebase 설정이 없어 저장할 수 없습니다. .env 의 VITE_FIREBASE_* 를 확인해 주세요.' }
   }
   if (state === 'blocked') {
     return {
       mode: 'blocked',
       label: 'DB 저장 차단됨',
+      short: 'DB',
       hint: 'Firestore 보안 규칙이 접근을 막고 있습니다. `firebase deploy --only firestore:rules` 로 규칙을 배포해 주세요.',
     }
   }
   if (state === 'db') {
-    return { mode: 'firestore', label: 'DB 저장', hint: '업로드한 감사보고서 전체 내용이 회사별로 Firestore에 누적됩니다.' }
+    return { mode: 'firestore', label: 'DB 저장', short: 'DB', hint: '업로드한 감사보고서 전체 내용이 회사별로 Firestore에 누적됩니다.' }
   }
-  return { mode: 'checking', label: 'DB 연결 확인 중', hint: 'Firestore 접근 가능 여부를 확인하고 있습니다.' }
+  return { mode: 'checking', label: 'DB 연결 확인 중', short: 'DB', hint: 'Firestore 접근 가능 여부를 확인하고 있습니다.' }
 }
 
 /** Firestore 실패 원인을 사용자에게 그대로 보여줄 문구로 바꾼다. */

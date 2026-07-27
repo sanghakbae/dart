@@ -236,7 +236,7 @@ main { padding-bottom: 64px; }
 .badge {
   display: inline-flex; align-items: center; gap: 5px;
   padding: 3px 9px;
-  border-radius: 999px;
+  border-radius: 3px;
   font-size: 14px; font-weight: 600;
   border: 1px solid var(--border);
   background: var(--surface-2);
@@ -285,7 +285,7 @@ main { padding-bottom: 64px; }
 .drop p { color: var(--text-2); font-size: 16.5px; max-width: 62ch; margin-inline: auto; }
 .drop-formats { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin-top: 14px; }
 .chip {
-  font-size: 14px; padding: 4px 11px; border-radius: 999px;
+  font-size: 14px; padding: 4px 11px; border-radius: 3px;
   background: var(--surface-2); color: var(--text-2); border: 1px solid var(--border);
   font-variant-numeric: tabular-nums;
 }
@@ -486,6 +486,35 @@ main { padding-bottom: 64px; }
 .chip-filter.active { box-shadow: 0 0 0 2px var(--text-1); font-weight: 700; }
 .chip-filter:disabled { opacity: 0.4; cursor: default; }
 
+/* ── 외부 API 상태 칩 ─────────────────────────────────── */
+.api-health { display: flex; gap: 5px; flex-wrap: nowrap; cursor: pointer; }
+.api-health .badge { flex: none; }
+
+/* 좁은 화면에서도 상태를 한 줄에 다 넣는다.
+   줄바꿈을 막고, 자리를 차지하는 것부터 줄인다 — 부제·사용자 이름은 없어도
+   되지만 어느 API 가 죽었는지는 화면을 열자마자 보여야 한다. */
+@media (max-width: 720px) {
+  .app-header .bar { flex-wrap: nowrap; gap: 6px; min-height: 50px; }
+  /* 제목은 로고 하나로 줄인다 — 좁은 폭을 두고 상태 칩과 다투면
+     둘 다 뭉개진다. 어느 API 가 죽었는지가 제목보다 급하다. */
+  .brand { flex: none; }
+  .brand-text { display: none; }
+  .brand-mark { width: 28px; height: 28px; font-size: 13px; }
+  .badge { font-size: 12px; padding: 2px 6px; gap: 4px; }
+  .badge .dot { width: 5px; height: 5px; }
+  .api-health { gap: 4px; }
+  /* 라벨을 축약형으로 바꾼다 — 국민연금→연금, KIPRIS→특허.
+     375px 에 로고·상태 4개·버튼까지 다 넣으려면 이만큼 줄여야 한다. */
+  .api-lbl { font-size: 0; }
+  .api-lbl::after { content: attr(data-short); font-size: 12px; }
+  /* 버튼 글자가 세로로 쪼개지지 않게 한다 */
+  .app-header .btn { white-space: nowrap; flex: none; }
+  .app-header .btn-sm { min-height: 30px; padding: 4px 8px; font-size: 13px; }
+  .app-header .bar > span { flex: none; }
+  /* 계정 사진·이름은 접는다. 상태 표시가 우선이다. */
+  .user-chip { display: none !important; }
+}
+
 /* ── 삭제 확인 모달 ───────────────────────────────────── */
 .modal-back {
   position: fixed; inset: 0; z-index: 60;
@@ -561,7 +590,7 @@ main { padding-bottom: 64px; }
 .tab.active { color: var(--series-1); border-bottom-color: var(--series-1); }
 .tab .n {
   font-size: 13px; color: var(--text-3);
-  background: var(--surface-2); border-radius: 999px; padding: 1px 6px; margin-left: 5px;
+  background: var(--surface-2); border-radius: 3px; padding: 1px 6px; margin-left: 5px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -641,11 +670,11 @@ table.fin .neg { color: var(--critical); }
 
 .seg {
   display: inline-flex; padding: 2px; gap: 2px;
-  background: var(--surface-2); border-radius: 999px; border: 1px solid var(--border);
+  background: var(--surface-2); border-radius: 3px; border: 1px solid var(--border);
 }
 .seg button {
   border: none; background: none; color: var(--text-2);
-  padding: 6px 14px; border-radius: 999px; font-size: 14px; font-weight: 600;
+  padding: 6px 14px; border-radius: 3px; font-size: 14px; font-weight: 600;
   min-height: 32px;
 }
 .seg button.on { background: var(--surface-1); color: var(--text-1); box-shadow: var(--shadow); }

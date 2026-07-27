@@ -59,7 +59,10 @@ export function parseFunding(doc) {
     const label = cells[0].replace(/\s+/g, '').replace(/^[※▶-]\s*/, '')
 
     // 자금 용도는 "운영자금 (원) | 999,999,990" 처럼 두 번째 칸이 라벨인 경우가 있다.
+    // 먼저 나온 값(본표)을 지킨다 — 뒤쪽 '기타 투자판단에 참고할 사항' 문단에도
+    // 같은 낱말이 섞여 있어 나중 것을 취하면 엉뚱한 숫자를 문다(운영자금 1,890).
     for (const [name, key] of PURPOSES) {
+      if (purposes[key]) continue
       const at = cells.findIndex((c) => c.replace(/\s+/g, '').startsWith(name))
       if (at < 0) continue
       const v = cells.slice(at + 1).map(parseAmount).find((n) => n != null)
