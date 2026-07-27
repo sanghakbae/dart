@@ -190,26 +190,55 @@ function finishBlock(b) {
  * 블록 헤더의 "제25(당)기 2024.01.01~2024.12.31" 를 우선 신뢰하고,
  * 없으면 표지에서 찾은 사업연도를 기준으로 -1 년을 전기로 본다.
  */
-function resolvePeriods(blocks, meta) {
+export function resolvePeriods(blocks, meta) {
   const hints = blocks.flatMap((b) => b.periodHints)
+
+  // periodHints 에는 기간 헤더뿐 아니라 핵심감사사항 같은 서술 문단이 통째로 섞여 든다.
+  // 그 안의 "2024년 12월 31일 현재 … 당기말 재고자산 …" 같은 문장을 당기=2024 로
+  // 잘못 물어, 2025 사업보고서의 당기가 2024 로 뒤집혔다.
+  //
+  // 그래서 '제 N 기' 바로 뒤에 붙는 날짜만 기간으로 인정한다. 서술 문단은 제N기와
+  // 연도가 멀찍이 떨어져 있어 자연히 걸러진다.
+  const byTerm = new Map()
+  const re = /제\s*(\d+)\s*(?:\(\s*[당전]\s*\)|[당전])?\s*기\s*(?:\(\s*[당전]\s*\)\s*)?(\d{4})[.\-/]\s*\d{1,2}/g
+  for (const h of hints) {
+    for (const m of h.matchAll(re)) {
+      const term = Number(m[1])
+      const year = Number(m[2])
+      if (!byTerm.has(term)) byTerm.set(term, year)
+    }
+  }
+
   let current = null
   let prior = null
+  let source = 'meta'
+  let termNo = meta.termNo ?? null
 
-  for (const h of hints) {
-    const years = [...h.matchAll(/(20\d{2})/g)].map((m) => Number(m[1]))
-    if (!years.length) continue
-    const y = Math.max(...years)
-    if (/\(?당\)?\s*기/.test(h) && current == null) current = y
-    else if (/\(?전\)?\s*기/.test(h) && prior == null) prior = y
+  if (byTerm.size) {
+    // 보고 대상 기(期)는 가장 높은 회차다. 표지의 termNo 가 있으면 그걸 우선한다.
+    const terms = [...byTerm.keys()].sort((a, b) => b - a)
+    termNo = termNo && byTerm.has(termNo) ? termNo : terms[0]
+    current = byTerm.get(termNo)
+    prior = byTerm.get(termNo - 1) ?? (current != null ? current - 1 : null)
+    source = 'statement'
+  } else {
+    // 헤더를 못 찾으면 옛 방식: '당기'/'전기' 라벨이 붙은 줄에서 연도를 줍는다.
+    for (const h of hints) {
+      const years = [...h.matchAll(/(20\d{2})/g)].map((x) => Number(x[1]))
+      if (!years.length) continue
+      const y = Math.max(...years)
+      if (/\(\s*당\s*\)\s*기|당\s*기/.test(h) && current == null) current = y
+      else if (/\(\s*전\s*\)\s*기|전\s*기/.test(h) && prior == null) prior = y
+    }
+    source = current != null ? 'statement' : 'meta'
   }
-  // 표 헤더에서 직접 읽은 연도가 표지 추정값보다 정확하다. 출처를 남겨 상위에서 판단하게 한다.
-  const source = current != null ? 'statement' : 'meta'
+
   if (current == null) current = meta.fiscalYear
   if (prior == null && current != null) prior = current - 1
-  // 원문에 오기가 있으면(전기 기간 종료일을 당기와 같게 적는 경우가 있다) 전기를 한 해 앞으로 둔다.
+  // 원문 오기(전기 종료일을 당기와 같게 적는 경우)를 바로잡는다.
   if (current != null && prior != null && prior >= current) prior = current - 1
+  if (termNo == null) termNo = extractTermNo(hints.join(' '))
 
-  const termNo = meta.termNo ?? extractTermNo(hints.join(' '))
   return [
     { id: 'current', year: current, label: current ? `${current}년` : '당기', termNo, which: '당기', source },
     { id: 'prior', year: prior, label: prior ? `${prior}년` : '전기', termNo: termNo ? termNo - 1 : null, which: '전기', source },

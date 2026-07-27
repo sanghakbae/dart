@@ -47,14 +47,27 @@ function isAmendment(text, fileName) {
   return /\[\s*(기재)?정정\s*\]|【\s*(기재)?정정\s*】/.test(title)
 }
 
+/**
+ * 보고서 종류. 표지 제목으로 판정한다.
+ *
+ * 본문 전체를 훑으면 안 된다 — 사업보고서 본문에도 "분기보고서 및 반기보고서를
+ * 제출" 같은 서술이 있어, 2025 사업보고서가 '반기보고서' 로 뒤집혔다.
+ * 종류 이름은 표지에 가장 먼저 나오므로, 가장 앞에서 걸리는 것을 택한다.
+ */
 function guessDocKind(text) {
-  if (/분기\s*보고서/.test(text)) return '분기보고서'
-  if (/반기\s*보고서/.test(text)) return '반기보고서'
-  if (/독립된\s*감사인의\s*감사보고서/.test(text)) return '감사보고서'
-  if (/독립된\s*감사인의\s*검토보고서/.test(text)) return '검토보고서'
-  if (/감사보고서/.test(text)) return '감사보고서'
-  if (/사업보고서/.test(text)) return '사업보고서'
-  return '재무제표'
+  const kinds = [
+    [/분기\s*보고서/, '분기보고서'],
+    [/반기\s*보고서/, '반기보고서'],
+    [/사업\s*보고서/, '사업보고서'],
+    [/독립된\s*감사인의\s*검토보고서|검토보고서/, '검토보고서'],
+    [/독립된\s*감사인의\s*감사보고서|감사보고서/, '감사보고서'],
+  ]
+  let best = null
+  for (const [re, label] of kinds) {
+    const m = re.exec(text)
+    if (m && (best == null || m.index < best.index)) best = { index: m.index, label }
+  }
+  return best?.label || '재무제표'
 }
 
 // 줄 단위로만 매칭한다. 문자클래스에 \s 를 넣으면 줄바꿈을 넘어 표제까지 빨려 들어간다.
