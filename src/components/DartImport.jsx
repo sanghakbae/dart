@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { searchCompanies, fetchFilings, fetchDocumentFile } from '../lib/dart/api'
+import { filingKind } from '../lib/dart/filingKind'
 import { Callout, Empty, Badge } from './ui'
 
 /**
@@ -133,8 +134,11 @@ export default function DartImport({ onFiles, busy }) {
               // 연 1회 감사받은 재무제표(상장사 사업보고서 · 비상장사 감사보고서)만
               // 앞세운다. 분기·반기는 검토만 받은 것이라 연간 추이에 섞으면 어긋나므로
               // 접어 두고, 필요할 때만 펼친다.
-              const annual = filings.filter((f) => f.kind === 'annual')
-              const periodic = filings.filter((f) => f.kind !== 'annual')
+              // 서버가 kind 를 붙여 주지만(dart-handler.filingKind), 프록시가 옛 버전이면
+              // 안 온다. 그때도 어긋나지 않게 이름으로 한 번 더 갈라 준다.
+              const kindOf = (f) => f.kind || filingKind(f.reportNm)
+              const annual = filings.filter((f) => kindOf(f) === 'annual')
+              const periodic = filings.filter((f) => kindOf(f) !== 'annual')
               const row = (f) => (
                 <li key={f.rceptNo}>
                   <button type="button" onClick={() => pull(f)} disabled={busy || pulling}>

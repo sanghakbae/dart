@@ -17,21 +17,33 @@ const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' }
 /** 공시 종류: 감사보고서류만 남긴다(A = 정기공시, F = 외부감사관련). */
 const AUDIT_RE = /(감사보고서|검토보고서|사업보고서|반기보고서|분기보고서)/
 
+// 연간/분기·반기 판정. 클라이언트와 한 곳(src/lib/dart/filingKind.js)을 공유해
+// 서버·클라이언트 판정이 어긋나지 않게 한다.
+//
+// import 로 지역 스코프에 들인 뒤 다시 export 한다. `export { x } from '...'` 로만
+// 쓰면 재수출만 되고 이 파일 안에서 filingKind() 로 부를 수 없어 런타임에 터진다.
+import { filingKind } from '../src/lib/dart/filingKind.js'
+export { filingKind }
+
 /**
- * 연간이냐 아니냐로 가른다.
- *
- * 이 앱은 연 1회 감사받은 재무제표만 쓴다. 상장사는 그게 '사업보고서'(감사받은
- * 연간 재무제표를 품는다)이고 비상장사는 '감사보고서'다. 분기·반기는 검토만 받은
- * 것이라 연간 추이에 섞으면 어긋난다.
- *
- * 반기·분기를 먼저 걸러야 한다 — '반기검토보고서' 에도 '검토보고서' 가 들어 있어
- * 순서를 바꾸면 반기가 연간으로 샌다.
+ * 공시 목록 원행(list.json)을 화면용으로 추린다 — 감사보고서류만, 중복 제거, 최신순.
+ * 네트워크와 떼어 두어 테스트할 수 있게 한다(내부에서 filingKind 를 부르는데,
+ * 이걸 재수출만 해 두면 이 파일 안에서 못 불러 런타임에 터진 적이 있다).
  */
-export function filingKind(nm = '') {
-  if (/분기/.test(nm)) return 'quarter'
-  if (/반기/.test(nm)) return 'half'
-  if (/(사업보고서|감사보고서)/.test(nm)) return 'annual'
-  return 'other'
+export function mapFilings(rows = []) {
+  const seen = new Set()
+  return rows
+    .filter((r) => AUDIT_RE.test(r.report_nm || ''))
+    .filter((r) => (seen.has(r.rcept_no) ? false : seen.add(r.rcept_no)))
+    .sort((a, b) => String(b.rcept_dt).localeCompare(String(a.rcept_dt)))
+    .map((r) => ({
+      rceptNo: r.rcept_no,
+      reportNm: (r.report_nm || '').trim(),
+      rceptDt: r.rcept_dt,
+      flrNm: r.flr_nm,
+      corpName: r.corp_name,
+      kind: filingKind(r.report_nm || ''),
+    }))
 }
 
 /**
@@ -259,19 +271,7 @@ export async function handleDart(req, key) {
         truncated = truncated || p.truncated
       }
 
-      const seen = new Set()
-      const list = rows
-        .filter((r) => AUDIT_RE.test(r.report_nm || ''))
-        .filter((r) => (seen.has(r.rcept_no) ? false : seen.add(r.rcept_no)))
-        .sort((a, b) => String(b.rcept_dt).localeCompare(String(a.rcept_dt)))
-        .map((r) => ({
-          rceptNo: r.rcept_no,
-          reportNm: (r.report_nm || '').trim(),
-          rceptDt: r.rcept_dt,
-          flrNm: r.flr_nm,
-          corpName: r.corp_name,
-          kind: filingKind(r.report_nm || ''),
-        }))
+      const list = mapFilings(rows)
       return json({ total: list.length, list, truncated }, 200, cors)
     }
 
