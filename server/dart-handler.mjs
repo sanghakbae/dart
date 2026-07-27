@@ -17,6 +17,16 @@ const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' }
 /** 공시 종류: 감사보고서류만 남긴다(A = 정기공시, F = 외부감사관련). */
 const AUDIT_RE = /(감사보고서|검토보고서|사업보고서|반기보고서|분기보고서)/
 
+/**
+ * 자본조달 공시. 비상장사는 투자 공시 의무가 없어 상장사에서만 나온다.
+ *   유상증자결정 · 전환사채권발행결정 · 신주인수권부사채 · 교환사채 ·
+ *   증권발행결과 · 전환청구권행사 · 주식매수선택권부여
+ * '자기전환사채취득/매도' 는 회사가 제 사채를 되사는 것이라 조달이 아니다 — 뺀다.
+ */
+const FUNDING_RE =
+  /(유상증자|무상증자|전환사채권발행|신주인수권부사채권발행|교환사채권발행|증권발행결과|전환청구권행사|주식매수선택권부여|현물출자|출자전환)/
+const FUNDING_EXCLUDE = /자기전환사채|자기주식|사채권의취득|매도결정|만기전취득/
+
 export function corsHeaders(origin) {
   return {
     'access-control-allow-origin': origin || '*',
@@ -247,6 +257,41 @@ export async function handleDart(req, key) {
       return json({ total: list.length, list, truncated }, 200, cors)
     }
 
+    if (op === 'funding') {
+      const corp = q.get('corp')
+      if (!corp) return json({ error: 'corp 파라미터가 필요합니다.' }, 400, cors)
+      const base = {
+        corp_code: corp,
+        bgn_de: q.get('from') || '20150101',
+        end_de: q.get('to') || ymd(new Date()),
+        page_count: '100',
+      }
+      // B = 발행공시(주요사항보고서), I = 거래소공시(증권발행결과·전환청구권행사 등)
+      const pages = await Promise.all(['B', 'I'].map((ty) => listAll(base, ty, key)))
+
+      const rows = []
+      let truncated = false
+      for (const p of pages) {
+        if (p.error) return json({ error: p.error }, 502, cors)
+        rows.push(...p.rows)
+        truncated = truncated || p.truncated
+      }
+
+      const seen = new Set()
+      const list = rows
+        .filter((r) => FUNDING_RE.test(r.report_nm || '') && !FUNDING_EXCLUDE.test(r.report_nm || ''))
+        .filter((r) => (seen.has(r.rcept_no) ? false : seen.add(r.rcept_no)))
+        .sort((a, b) => String(b.rcept_dt).localeCompare(String(a.rcept_dt)))
+        .map((r) => ({
+          rceptNo: r.rcept_no,
+          reportNm: (r.report_nm || '').replace(/\s+/g, ' ').trim(),
+          rceptDt: r.rcept_dt,
+          kind: fundingKind(r.report_nm || ''),
+          isAmendment: /\[(기재정정|첨부정정|첨부추가|정정)\]/.test(r.report_nm || ''),
+        }))
+      return json({ total: list.length, list, truncated }, 200, cors)
+    }
+
     if (op === 'document') {
       const rcept = q.get('rcept')
       if (!/^\d{14}$/.test(rcept || '')) return json({ error: 'rcept(접수번호 14자리)가 필요합니다.' }, 400, cors)
@@ -267,6 +312,19 @@ export async function handleDart(req, key) {
   } catch (e) {
     return json({ error: String(e?.message || e) }, 502, cors)
   }
+}
+
+/** 공시명 → 조달 수단. 화면에서 묶어 보여 주고 색을 나누는 데 쓴다. */
+function fundingKind(name) {
+  if (/전환사채/.test(name)) return 'CB'
+  if (/신주인수권부사채/.test(name)) return 'BW'
+  if (/교환사채/.test(name)) return 'EB'
+  if (/무상증자/.test(name)) return '무상증자'
+  if (/유상증자/.test(name)) return '유상증자'
+  if (/전환청구권행사/.test(name)) return '전환청구'
+  if (/주식매수선택권/.test(name)) return '스톡옵션'
+  if (/증권발행결과/.test(name)) return '발행결과'
+  return '기타'
 }
 
 function ymd(d) {
