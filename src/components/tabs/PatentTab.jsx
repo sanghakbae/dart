@@ -109,9 +109,11 @@ export default function PatentTab({ report }) {
             <Tile label="출원·공개" value={stats.pending} suffix="건" />
             {stats.years[0] && <Tile label={`${stats.years[0][0]}년 출원`} value={stats.years[0][1]} suffix="건" />}
           </div>
-          {data.returned < data.total && (
-            <Callout>
-              전체 {data.total}건 중 최근 {data.returned}건만 표에 담았습니다.
+          {data.truncated && (
+            <Callout tone="warn">
+              KIPRIS 출원인 검색은 이름이 비슷한 남의 특허까지 함께 돌려줍니다
+              (검색 결과 {data.upstreamHits?.toLocaleString('ko-KR')}건 중 {data.scanned}건까지 확인).
+              출원인명이 정확히 같은 건만 세었지만, 더 뒤쪽에 남은 건이 있을 수 있습니다.
             </Callout>
           )}
         </div>
@@ -169,24 +171,13 @@ export default function PatentTab({ report }) {
 }
 
 /**
- * KIPRIS 는 법인격을 붙여 등록돼 있다("주식회사 무하유").
- * 감사보고서에서 뽑은 이름은 그렇지 않을 수 있어 두 표기를 모두 시도한다.
+ * 이름 변형(주식회사 유무)과 정확 일치 판정은 프록시가 한다.
+ * 출원인 검색이 토큰 검색이라 "알체라" 로 부르면 2.3만 건이 걸리는데,
+ * 그 걸러내기를 화면에서 하면 매번 상류를 여러 번 두드려야 한다.
  */
 async function fetchPatents(company) {
-  const bare = company.replace(/^주식회사\s*|\s*주식회사$|^\(주\)\s*|㈜\s*/g, '').trim()
-  const candidates = [...new Set([company, `주식회사 ${bare}`, bare])]
-
-  let last = null
-  for (const name of candidates) {
-    const res = await fetch(proxyUrl(`/api/kipris/patents?applicant=${encodeURIComponent(name)}`))
-    const body = await res.json().catch(() => ({}))
-    if (!res.ok) {
-      last = new Error(body?.error || `요청 실패 (${res.status})`)
-      continue
-    }
-    if (body.total > 0) return body
-    last = null
-  }
-  if (last) throw last
-  return { applicant: company, total: 0, returned: 0, patents: [] }
+  const res = await fetch(proxyUrl(`/api/kipris/patents?applicant=${encodeURIComponent(company)}`))
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(body?.error || `요청 실패 (${res.status})`)
+  return body
 }

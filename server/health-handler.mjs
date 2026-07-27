@@ -11,6 +11,8 @@
 //
 // 화면 상단에 그대로 띄우기 때문에 응답은 작고 빠르게 유지한다.
 
+import { fetchUpstream } from './dart-handler.mjs'
+
 // 국민연금은 평소에도 10초 안팎이 걸린다. 짧게 잡으면 멀쩡한 API 가 죽은 것으로 보인다.
 const TIMEOUT = 15_000
 
@@ -20,14 +22,36 @@ const json = (body, status, extra = {}) =>
     headers: { 'content-type': 'application/json; charset=utf-8', ...extra },
   })
 
-async function timed(fn) {
+async function timed(fn, keys) {
   const started = Date.now()
   try {
     const r = await fn()
-    return { ...r, ms: Date.now() - started }
+    return { ...r, detail: redact(r.detail, keys), ms: Date.now() - started }
   } catch (e) {
-    return { ok: false, detail: String(e?.message || e), ms: Date.now() - started }
+    return { ok: false, detail: redact(String(e?.message || e), keys), ms: Date.now() - started }
   }
+}
+
+/**
+ * 응답에서 인증키와 상류 URL 을 지운다.
+ *
+ * 상태는 200 으로 나가기 때문에 Worker 의 scrub(4xx 만 처리)이 걸리지 않는다.
+ * 실제로 Cloudflare 의 "Too many redirects. <url>, <url> …" 메시지가 인증키가 박힌
+ * URL 을 그대로 담아 /api/health 로 새어 나갔다. 여기서 반드시 막아야 한다.
+ */
+function redact(text, keys = []) {
+  let out = String(text ?? '')
+  for (const k of keys) if (k && k.length >= 8) out = out.split(k).join('<KEY>')
+  // 키를 지운 뒤에도 남는 URL 은 쿼리스트링을 통째로 잘라 낸다.
+  out = out.replace(/https?:\/\/[^\s,)]+/g, (m) => {
+    try {
+      const u = new URL(m)
+      return u.origin + u.pathname
+    } catch {
+      return '<URL>'
+    }
+  })
+  return out.length > 300 ? `${out.slice(0, 300)}…` : out
 }
 
 function withTimeout(url, init) {
@@ -44,7 +68,9 @@ async function checkDart(key) {
   url.searchParams.set('bgn_de', '20260101')
   url.searchParams.set('end_de', '20261231')
   url.searchParams.set('page_count', '1')
-  const res = await withTimeout(url)
+  // 개발 서버의 fetch 로는 되지만 Worker 에서는 리다이렉트로 막힌다.
+  // dart-handler 와 같은 상류 호출기를 써야 한다.
+  const res = await fetchUpstream(url)
   const d = await res.json().catch(() => ({}))
   if (d.status === '000' || d.status === '013') return { ok: true, detail: '정상' }
   return { ok: false, detail: `${d.status || res.status} ${d.message || ''}`.trim() }
@@ -110,10 +136,11 @@ export async function handleHealth(req, keys = {}) {
   }
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors })
 
+  const secrets = [keys.DART_API_KEY, keys.NPS_API_KEY, keys.KIPRIS_API_KEY].filter(Boolean)
   const [dart, nps, kipris] = await Promise.all([
-    timed(() => checkDart(keys.DART_API_KEY)),
-    timed(() => checkNps(keys.NPS_API_KEY)),
-    timed(() => checkKipris(keys.KIPRIS_API_KEY)),
+    timed(() => checkDart(keys.DART_API_KEY), secrets),
+    timed(() => checkNps(keys.NPS_API_KEY), secrets),
+    timed(() => checkKipris(keys.KIPRIS_API_KEY), secrets),
   ])
 
   // short 는 좁은 화면용 축약 라벨이다(헤더를 한 줄에 담아야 한다).

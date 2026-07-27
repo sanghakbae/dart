@@ -55,7 +55,7 @@ const UPSTREAM_HEADERS = {
   'accept-language': 'ko-KR,ko;q=0.9,en;q=0.8',
 }
 
-async function fetchUpstream(target) {
+export async function fetchUpstream(target) {
   let url = String(target)
   let cookie = ''
   for (let hop = 0; hop < 4; hop++) {
