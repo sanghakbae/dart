@@ -49,14 +49,14 @@ export default function Header({ storage, theme, onTheme, user, admin, onSignOut
           </div>
         </div>
 
-        <Badge
-          tone={storage.mode === 'firestore' ? 'good' : storage.mode === 'blocked' ? 'warn' : 'muted'}
-          dot
-        >
-          <span className="api-lbl" data-short={storage.short || 'DB'} title={storage.hint}>
-            {storage.label}
-          </span>
-        </Badge>
+        {/* DB 상태는 평소 늘 정상이라 자리만 차지했다. 문제가 있을 때만 띄운다. */}
+        {storage.mode !== 'firestore' && (
+          <Badge tone={storage.mode === 'blocked' ? 'warn' : 'muted'} dot>
+            <span className="api-lbl" data-short={storage.short || 'DB'} title={storage.hint}>
+              {storage.label}
+            </span>
+          </Badge>
+        )}
 
         <ApiHealth />
 
