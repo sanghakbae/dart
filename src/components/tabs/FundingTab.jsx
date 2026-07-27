@@ -34,7 +34,7 @@ export default function FundingTab({ report }) {
     [companyName]
   )
 
-  const { data, fetchedAt, stale, loading, fetching, phase, error, fetchNow } = useCachedRemote({
+  const { data, fetchedAt, stale, loading, fetching, phase, error, warning, fetchNow } = useCachedRemote({
     key: companyKey,
     load: loadFunding,
     save: saveFunding,
@@ -83,6 +83,7 @@ export default function FundingTab({ report }) {
       >
         <div className="stack">
           {error && <Callout tone="warn">새로 받아오지 못해 저장된 값을 보여줍니다. ({error})</Callout>}
+          {warning && <Callout tone="warn">받아왔지만 DB 에 저장하지 못했습니다. 화면을 다시 열면 사라집니다. ({warning})</Callout>}
 
           <div className="grid grid-tiles">
             <Tile label="누적 조달" value={totalRaised || null} unit={totalRaised ? `${full(totalRaised)}원` : undefined} />

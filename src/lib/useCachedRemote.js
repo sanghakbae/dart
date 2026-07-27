@@ -12,7 +12,7 @@
 // 대신 언제 받은 값인지 항상 드러낸다 — 오래된 값을 최신인 줄 알고 보는 게
 // 자동 갱신을 포기하는 것보다 위험하다.
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 /**
  * @param {object}   o
@@ -28,16 +28,24 @@ export function useCachedRemote({ key, load, fetch: fetchRemote, save, ready = t
   const [fetching, setFetching] = useState(false)
   const [phase, setPhase] = useState('')
   const [error, setError] = useState(null)
+  const [warning, setWarning] = useState(null)
+
+  // 지금 화면이 보고 있는 회사. 조회 도중에 회사를 바꾸면, 뒤늦게 도착한 앞 회사의
+  // 결과가 새 회사 화면에 얹힐 수 있다. 도착 시점에 이 값과 견줘 버린다.
+  const current = useRef(key)
+  current.current = key
 
   // 화면에 들어오면 저장된 것만 읽는다. 여기서 상류를 부르지 않는다.
   useEffect(() => {
+    setData(null)
+    setError(null)
+    setWarning(null)
     if (!key) {
       setLoading(false)
       return
     }
     let alive = true
     setLoading(true)
-    setError(null)
     Promise.resolve(load(key))
       .then((cached) => alive && setData(cached || null))
       .catch(() => alive && setData(null))
@@ -49,17 +57,21 @@ export function useCachedRemote({ key, load, fetch: fetchRemote, save, ready = t
 
   /** 사용자가 눌렀을 때만 상류를 부른다. */
   const fetchNow = useCallback(async () => {
-    if (!ready || fetching) return
+    if (!ready || !key || fetching) return
     setFetching(true)
     setError(null)
+    setWarning(null)
     try {
-      const fresh = await fetchRemote((m) => setPhase(m))
+      const fresh = await fetchRemote((m) => current.current === key && setPhase(m))
       const saved = await save(key, fresh)
+      if (current.current !== key) return // 그 사이 다른 회사로 옮겼다
       setData({ ...fresh, fetchedAt: Date.now() })
-      if (saved?.warning) setError(saved.warning)
+      // 받아오기는 됐는데 DB 에 못 넣은 경우다. 조회 실패와 구분해야 화면 문구가 맞는다.
+      if (saved?.warning) setWarning(saved.warning)
     } catch (e) {
-      setError(e.message)
+      if (current.current === key) setError(e.message)
     } finally {
+      // 회사를 옮겼더라도 반드시 내려야 한다 — 여기서 걸러 두면 버튼이 영영 잠긴다.
       setFetching(false)
       setPhase('')
     }
@@ -74,6 +86,7 @@ export function useCachedRemote({ key, load, fetch: fetchRemote, save, ready = t
     fetching,
     phase,
     error,
+    warning,
     fetchNow,
   }
 }

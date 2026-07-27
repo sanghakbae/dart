@@ -92,11 +92,13 @@ export function Callout({ tone, children }) {
   )
 }
 
-export function Empty({ title, children }) {
+/** action 은 <p> 밖에 둔다 — 버튼을 children 으로 넘기면 <p> 안에 <div> 가 들어가 무효 마크업이 된다. */
+export function Empty({ title, children, action }) {
   return (
     <div className="empty">
       <h3>{title}</h3>
       {children && <p>{children}</p>}
+      {action && <div className="empty-act">{action}</div>}
     </div>
   )
 }

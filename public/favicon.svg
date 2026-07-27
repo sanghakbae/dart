@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Corp Finder">
+  <title>파인더 · Corp Finder</title>
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2a78d6"/>
+      <stop offset="1" stop-color="#1baf7a"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 헤더 브랜드 마크와 같은 라운드 사각형·그라디언트 -->
+  <rect width="64" height="64" rx="14" fill="url(#g)"/>
+
+  <!-- 돋보기: 찾는다는 뜻. 렌즈 안의 막대는 기업 지표다. -->
+  <g fill="none" stroke="#fff" stroke-linecap="round">
+    <circle cx="28" cy="27" r="14" stroke-width="4.5"/>
+    <path d="M38.5 37.5 L48 47" stroke-width="6"/>
+  </g>
+  <g fill="#fff">
+    <rect x="21" y="28" width="4" height="7" rx="1.4"/>
+    <rect x="26" y="23" width="4" height="12" rx="1.4"/>
+    <rect x="31" y="18" width="4" height="17" rx="1.4"/>
+  </g>
+</svg>

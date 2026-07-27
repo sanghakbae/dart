@@ -11,8 +11,10 @@ import { useHealth } from '../lib/health'
 function ApiHealth() {
   const { health, error, loading, reload } = useHealth()
 
-  if (loading) return <Badge tone="muted" dot><span title="외부 API 상태 확인 중">API 확인 중</span></Badge>
-  if (error) {
+  // 5분마다 다시 보는데, 그때마다 칩을 걷어내면 상태가 깜빡인다.
+  // 한 번이라도 받아 뒀으면 새 결과가 올 때까지 그대로 둔다.
+  if (loading && !health) return <Badge tone="muted" dot><span title="외부 API 상태 확인 중">API 확인 중</span></Badge>
+  if (error && !health) {
     return (
       <Badge tone="warn" dot>
         <span title={error} onClick={reload} style={{ cursor: 'pointer' }}>API 상태 불명</span>
@@ -23,7 +25,7 @@ function ApiHealth() {
   return (
     <span className="api-health" onClick={reload} title="눌러서 다시 확인">
       {(health?.services || []).map((s) => (
-        <Badge key={s.id} tone={s.ok ? 'good' : s.optional ? 'muted' : 'critical'} dot>
+        <Badge key={s.id} tone={s.ok ? 'good' : s.slow ? 'warn' : s.optional ? 'muted' : 'critical'} dot>
           <span
             className="api-lbl"
             data-short={s.short || s.label}
@@ -42,10 +44,23 @@ export default function Header({ storage, theme, onTheme, user, admin, onSignOut
     <header className="app-header">
       <div className="wrap bar">
         <div className="brand">
-          <div className="brand-mark" aria-hidden="true">감</div>
+          {/* 파비콘(public/favicon.svg)과 같은 그림. 둘이 어긋나면 탭과 헤더가 따로 논다. */}
+          <div className="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 64 64" width="20" height="20">
+              <g fill="none" stroke="currentColor" strokeLinecap="round">
+                <circle cx="28" cy="27" r="14" strokeWidth="5" />
+                <path d="M38.5 37.5 L48 47" strokeWidth="7" />
+              </g>
+              <g fill="currentColor">
+                <rect x="21" y="28" width="4" height="7" rx="1.4" />
+                <rect x="26" y="23" width="4" height="12" rx="1.4" />
+                <rect x="31" y="18" width="4" height="17" rx="1.4" />
+              </g>
+            </svg>
+          </div>
           <div className="brand-text">
-            <strong>감사보고서 분석기</strong>
-            <span>업로드 · 전체 내용 분석 · 전년 대비 추이</span>
+            <strong>파인더</strong>
+            <span>감사보고서 · 공시 · 고용 · 투자 · 특허</span>
           </div>
         </div>
 

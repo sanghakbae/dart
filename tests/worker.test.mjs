@@ -58,3 +58,27 @@ test('키 없을 때 안내 문구', async () => {
 })
 
 
+// 본문을 읽고도 원본 Response 를 돌려주는 바람에, 지울 게 없는 오류 응답이
+// 통째로 비어 나갔다. 사용자에게는 안내 문구 대신 "요청 실패 (400)" 만 보였다.
+test('오류 응답은 스크럽 뒤에도 읽을 수 있다', async () => {
+  const env = { NPS_API_KEY: 'n'.repeat(40) }
+  const r = await w.fetch(req('/api/nps/timeline', 'https://dart.sanghak.kr'), env)
+  eq(r.status, 400)
+  const b = await r.json()
+  if (!/name/.test(b.error)) throw new Error(`문구가 사라졌다: ${JSON.stringify(b)}`)
+})
+test('오류 응답에서 인증키를 지운다', async () => {
+  // 상류 오류 메시지에 인증키가 박힌 URL 이 실려 나온 적이 있다. 여기서는
+  // 키를 그대로 담은 404 문구로 대신 확인한다(상류를 부르지 않는다).
+  const key = 'k'.repeat(40)
+  const r = await w.fetch(req(`/api/kipris/${key}`, 'https://dart.sanghak.kr'), { KIPRIS_API_KEY: key })
+  eq(r.status, 404)
+  const text = await r.text()
+  if (text.includes(key)) throw new Error('인증키가 그대로 나갔다')
+  if (!text.includes('<KEY>')) throw new Error(`가려진 흔적이 없다: ${text}`)
+})
+test('/api/health 도 오리진 제한을 받는다', async () => {
+  const r = await w.fetch(req('/api/health', 'https://evil.example.com'), { DART_API_KEY: 'x' })
+  eq(r.status, 403)
+  eq(r.headers.get('access-control-allow-origin'), null)
+})

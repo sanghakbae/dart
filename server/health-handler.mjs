@@ -14,7 +14,7 @@
 import { fetchUpstream } from './dart-handler.mjs'
 
 // 국민연금은 평소에도 10초 안팎이 걸린다. 짧게 잡으면 멀쩡한 API 가 죽은 것으로 보인다.
-const TIMEOUT = 15_000
+const TIMEOUT = 25_000
 
 const json = (body, status, extra = {}) =>
   new Response(JSON.stringify(body), {
@@ -28,6 +28,12 @@ async function timed(fn, keys) {
     const r = await fn()
     return { ...r, detail: redact(r.detail, keys), ms: Date.now() - started }
   } catch (e) {
+    // 시간 초과는 죽은 것과 다르다. 국민연금은 10초 안팎이 예사라 몰릴 때 걸리는데,
+    // 그걸 빨간 칩으로 띄우면 멀쩡한 API 를 장애로 읽게 된다.
+    const timedOut = e?.name === 'TimeoutError' || e?.name === 'AbortError'
+    if (timedOut) {
+      return { ok: false, slow: true, detail: `응답이 ${TIMEOUT / 1000}초 안에 오지 않았습니다`, ms: Date.now() - started }
+    }
     return { ok: false, detail: redact(String(e?.message || e), keys), ms: Date.now() - started }
   }
 }
@@ -149,7 +155,7 @@ export async function handleHealth(req, keys = {}) {
     { id: 'nps', label: '국민연금', short: '연금', ...nps },
     { id: 'kipris', label: 'KIPRIS', short: '특허', ...kipris },
   ]
-  // 선택 서비스(KIPRIS)는 없더라도 전체를 실패로 보지 않는다.
-  const ok = services.filter((s) => !s.optional).every((s) => s.ok)
+  // 선택 서비스(KIPRIS)는 없더라도, 느려서 못 본 것도 전체 실패로 보지 않는다.
+  const ok = services.filter((s) => !s.optional).every((s) => s.ok || s.slow)
   return json({ ok, checkedAt: Date.now(), services }, 200, cors)
 }

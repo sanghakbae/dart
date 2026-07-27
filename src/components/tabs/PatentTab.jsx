@@ -15,7 +15,7 @@ export default function PatentTab({ report }) {
   const companyKey = report?.companyKey || null
   const company = report?.meta?.company || null
 
-  const { data, fetchedAt, stale, loading, fetching, error, fetchNow } = useCachedRemote({
+  const { data, fetchedAt, stale, loading, fetching, error, warning, fetchNow } = useCachedRemote({
     key: companyKey,
     load: loadPatents,
     save: savePatents,
@@ -67,6 +67,7 @@ export default function PatentTab({ report }) {
       <Card title="특허 현황" sub={`출원인 ${data.applicant}`} right={bar}>
         <div className="stack">
           {error && <Callout tone="warn">새로 받아오지 못해 저장된 값을 보여줍니다. ({error})</Callout>}
+          {warning && <Callout tone="warn">받아왔지만 DB 에 저장하지 못했습니다. 화면을 다시 열면 사라집니다. ({warning})</Callout>}
           <div className="grid grid-tiles">
             <Tile label="전체" value={data.total} suffix="건" />
             <Tile label="등록" value={stats.registered} suffix="건" tone="good" />

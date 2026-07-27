@@ -1,9 +1,9 @@
 {
-  "name": "dart-audit-analyzer",
+  "name": "corp-finder",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "감사보고서 업로드 분석 · 전년도 대비 추이 시각화",
+  "description": "파인더 · Corp Finder — 감사보고서·공시·고용·투자·특허를 한 화면에서",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

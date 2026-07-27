@@ -25,13 +25,15 @@ export function RemoteEmpty({ source, title, children, fetching, phase, onFetch,
   return (
     <div className="stack">
       {error && <Callout tone="warn">{error}</Callout>}
-      <Empty title={title}>
-        {children}
-        <div style={{ marginTop: 14 }}>
+      <Empty
+        title={title}
+        action={
           <button className="btn btn-primary" type="button" onClick={onFetch} disabled={fetching}>
             {fetching ? <><span className="spinner" /> {phase || '받는 중…'}</> : `${source} 에서 받아오기`}
           </button>
-        </div>
+        }
+      >
+        {children}
       </Empty>
     </div>
   )

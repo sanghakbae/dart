@@ -1,4 +1,4 @@
-/* 감사보고서 분석기 — 가로폭 100% 반응형. 모바일에서도 모든 데이터가 보이도록
+/* 파인더(Corp Finder) — 가로폭 100% 반응형. 모바일에서도 모든 데이터가 보이도록
    표는 첫 열 고정 + 가로 스크롤, 차트는 표 보기 토글을 함께 제공한다. */
 
 :root {
@@ -158,6 +158,7 @@ button { font-family: inherit; font-size: inherit; cursor: pointer; }
   display: grid; place-items: center;
   color: #fff; font-weight: 700; font-size: 15px;
 }
+.brand-mark svg { display: block; }
 .brand-text { min-width: 0; }
 .brand-text strong { display: block; font-size: 18px; letter-spacing: -0.02em; }
 .brand-text span { display: block; font-size: 13.5px; color: var(--text-3); }
@@ -792,6 +793,7 @@ table.fin.note td.lbl, table.fin.note th.lbl { max-width: 22em; }
 .empty { text-align: center; padding: clamp(28px, 6vw, 56px) 20px; color: var(--text-3); }
 .empty h3 { color: var(--text-2); font-size: 17px; margin-bottom: 6px; }
 .empty p { font-size: 15.5px; max-width: 52ch; margin-inline: auto; }
+.empty-act { margin-top: 14px; }
 
 .kv { display: grid; grid-template-columns: minmax(88px, auto) 1fr; gap: 6px 14px; font-size: 15.5px; }
 .kv dt { color: var(--text-3); }

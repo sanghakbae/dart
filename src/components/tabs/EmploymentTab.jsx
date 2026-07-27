@@ -21,7 +21,7 @@ export default function EmploymentTab({ report, timeline }) {
   const companyKey = report?.companyKey || null
 
   // 자동으로 받지 않는다. 한 회사 조회에 상류를 25회 안팎 두드리고 10초 가까이 걸린다.
-  const { data, fetchedAt, stale, loading, fetching, error, fetchNow } = useCachedRemote({
+  const { data, fetchedAt, stale, loading, fetching, error, warning, fetchNow } = useCachedRemote({
     key: companyKey,
     load: loadEmployment,
     save: (k, v) => saveEmployment(k, { ...v, name: company, bizNo }),
@@ -89,6 +89,11 @@ export default function EmploymentTab({ report, timeline }) {
           {error && (
             <Callout tone="warn">
               새로 받아오지 못해 저장된 값을 보여줍니다. ({error})
+            </Callout>
+          )}
+          {warning && (
+            <Callout tone="warn">
+              받아왔지만 DB 에 저장하지 못했습니다. 화면을 다시 열면 사라집니다. ({warning})
             </Callout>
           )}
           <div className="grid grid-tiles">

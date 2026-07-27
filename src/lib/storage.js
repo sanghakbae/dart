@@ -378,6 +378,13 @@ export async function deleteCompany(companyKey) {
     // 관문을 통과했으면 하위도 같은 권한으로 지워진다. 중간에 실패해도
     // 회사 문서가 이미 없어 목록에는 안 보이므로, 남은 건 조용히 넘긴다.
     try {
+      // 외부 조회 캐시(고용·투자·특허)도 같이 지운다. 남겨 두면 같은 회사를
+      // 다시 올렸을 때 예전에 받아 둔 값이 되살아난다.
+      for (const sub of ['employment', 'funding', 'patents']) {
+        const cached = await getDocs(collection(db, COL, companyKey, sub))
+        await commitAll(cached.docs.map((d) => d.ref))
+      }
+
       const reps = await getDocs(collection(db, COL, companyKey, 'reports'))
       for (const r of reps.docs) {
         const chunks = await getDocs(contentCol(companyKey, r.id))

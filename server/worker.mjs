@@ -50,20 +50,19 @@ export default {
       )
     }
 
-    // /api/health 는 상류를 실제로 한 번씩 불러 본 결과를 준다(화면 상단 상태 칩).
-    if (url.pathname === '/api/health') {
-      const res = await handleHealth(request, env)
-      if (res && allowed) res.headers.set('access-control-allow-origin', allowed)
-      return res
-    }
-
+    const isHealth = url.pathname === '/api/health'
     const isDart = url.pathname.startsWith('/api/dart/')
     const isNps = url.pathname.startsWith('/api/nps/')
     const isKipris = url.pathname.startsWith('/api/kipris/')
-    if (!isDart && !isNps && !isKipris) return json({ error: `알 수 없는 경로: ${url.pathname}` }, 404, {})
+    if (!isHealth && !isDart && !isNps && !isKipris) {
+      return json({ error: `알 수 없는 경로: ${url.pathname}` }, 404, {})
+    }
 
     // 브라우저에서 온 요청인데 허용 목록에 없으면 여기서 끊는다.
     // (서버 대 서버 호출은 Origin 헤더가 없어 통과시킨다)
+    //
+    // /api/health 도 예외가 아니다 — 상류를 세 번 부르는 경로라, 열어 두면
+    // 남의 사이트가 우리 인증키 할당량을 태울 수 있다.
     if (origin && !allowed) {
       return json({ error: `허용되지 않은 오리진입니다: ${origin}` }, 403, {})
     }
@@ -73,6 +72,9 @@ export default {
       method: request.method,
       headers: stripOrigin(request.headers, allowed),
     })
+
+    // /api/health 는 상류를 실제로 한 번씩 불러 본 결과를 준다(화면 상단 상태 칩).
+    if (isHealth) return handleHealth(forwarded, env)
 
     const response = isNps
       ? await handleNps(forwarded, env.NPS_API_KEY || '')
@@ -97,12 +99,21 @@ async function scrub(response, env) {
   const keys = [env.DART_API_KEY, env.NPS_API_KEY, env.KIPRIS_API_KEY].filter((k) => k && k.length >= 8)
   if (!keys.length) return response
 
+  // 본문을 읽는 순간 원본 Response 는 다시 쓸 수 없다. 지울 게 없더라도
+  // 원본을 그대로 돌려주면 안 된다 — 읽힌 본문으로 나가 오류 메시지가 통째로 사라진다.
   const text = await response.text()
   let out = text
   for (const k of keys) out = out.split(k).join('<KEY>')
   // 키를 지운 뒤에도 상류 URL 이 남으면 통째로 줄인다.
-  out = out.replace(/https?:\/\/[^\s",]+/g, (m) => new URL(m).origin + new URL(m).pathname)
-  if (out === text) return response
+  // 정규식에 걸렸다고 다 URL 은 아니다 — 여기서 던지면 오류 응답 자체가 사라진다.
+  out = out.replace(/https?:\/\/[^\s",]+/g, (m) => {
+    try {
+      const u = new URL(m)
+      return u.origin + u.pathname
+    } catch {
+      return '<URL>'
+    }
+  })
 
   // 본문 길이가 달라졌으므로 원본 헤더의 content-length·content-encoding 을 물려주면
   // 응답이 잘리거나 디코딩에 실패한다. 런타임이 다시 계산하도록 지운다.
