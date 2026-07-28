@@ -14,7 +14,7 @@
 // 주석 번호는 문서마다 다르다(무하유 연결 14, 별도 15). 제목으로 찾는다.
 
 import { parseAmount } from './numbers.js'
-import { noteZone, normLabel } from './zone.js'
+import { noteZone, normLabel, isHeading } from './zone.js'
 
 // 제목 전체가 이것이어야 한다. 끝을 열어 두면 재무상태표의
 // 「상환전환우선주부채」 항목 행까지 제목으로 걸린다.
@@ -100,10 +100,12 @@ function detailZone(rows) {
   if (start < 0) return null
 
   // 표가 끝나는 곳까지 — 다음 주석 제목이 나오면 멈춘다.
+  // 제목 줄만 인정한다. 번호로만 가리면 표 안의 항목 행("1. 상환전환우선주부채 | …")
+  // 에서 구역이 잘려 표를 반토막 낸다.
   const NEXT = /^\d{1,2}\s*\.\s*\S/
   let end = rows.length
   for (let i = start + 1; i < rows.length; i++) {
-    if (NEXT.test((rows[i][0] || '').trim())) {
+    if (NEXT.test((rows[i][0] || '').trim()) && isHeading(rows[i])) {
       end = i
       break
     }
@@ -322,8 +324,17 @@ export function redemptionAt(rcps, years) {
 function readMoney(raw) {
   const s = String(raw ?? '').trim()
   if (!s) return null
-  const scale = /백만\s*원/.test(s) ? 1e6 : /천\s*원/.test(s) ? 1e3 : /억\s*원/.test(s) ? 1e8 : 1
-  const n = parseAmount(s.replace(/[백만천억]?\s*원/g, ''))
+  // 긴 단위부터 봐야 한다. '백만' 을 한 글자씩 지우면 "3,500백" 이 남아 파싱에 실패한다.
+  const UNITS = [
+    [/(\d)\s*조\s*원?/, 1e12],
+    [/(\d)\s*억\s*원?/, 1e8],
+    [/(\d)\s*백만\s*원?/, 1e6],
+    [/(\d)\s*만\s*원?/, 1e4],
+    [/(\d)\s*천\s*원?/, 1e3],
+  ]
+  const hit = UNITS.find(([re]) => re.test(s))
+  const scale = hit ? hit[1] : 1
+  const n = parseAmount(s.replace(/\s*(조|억|백만|만|천)?\s*원/g, '').replace(/\s*(조|억|백만|만|천)\s*$/, ''))
   return n == null ? null : n * scale
 }
 

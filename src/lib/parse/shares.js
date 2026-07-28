@@ -121,8 +121,21 @@ function includesPreferred(capital, issued, preferred) {
   const par = capital?.parValue
   const stock = capital?.capitalStock
   if (!par || !stock) return false
-  const impliedCommon = stock / par
-  return Math.abs(issued - preferred - impliedCommon) < 1
+
+  const impliedShares = stock / par
+  const label = capital?.capitalStockLabel || ''
+  const near = (a, b) => Math.abs(a - b) < 1
+
+  // '보통주자본금' 이면 되짚은 수가 보통주 수다. 발행주식수에서 우선주를 뺀 값이
+  // 그 수와 맞으면, 발행주식수가 이미 우선주를 품고 있다는 뜻이다.
+  if (near(issued - preferred, impliedShares)) return true
+
+  // 라벨이 '보통주' 없이 그냥 '자본금'(총액)이면 되짚은 수가 총 주식수다.
+  // 이때는 발행주식수와 바로 견준다. 라벨을 못 읽었으면 넘겨짚지 않는다 —
+  // K-IFRS 는 발행주식수 == 보통주자본금÷액면가 라 여기서도 참이 되어 버린다.
+  if (label && !/보통주/.test(label) && near(issued, impliedShares) && issued > preferred) return true
+
+  return false
 }
 
 /**

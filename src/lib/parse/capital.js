@@ -70,6 +70,9 @@ function readSummary(zone) {
     const nums = cells.slice(1).map((c) => parseAmount(String(c).replace(/주/g, ''))).filter((v) => v != null)
     if (!nums.length) continue
     out[hit[1]] = nums[0]
+    // 자본금이 '보통주자본금' 인지 총액인지에 따라 발행주식수의 의미가 달라진다
+    // (shares.js 의 includesPreferred 가 이 라벨로 가른다).
+    if (hit[1] === 'capitalStock') out.capitalStockLabel = label
     if (nums[1] != null) prior[hit[1]] = nums[1]
   }
   if (!Object.keys(out).length) return null

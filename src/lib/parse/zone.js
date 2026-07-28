@@ -15,7 +15,7 @@ const NEXT_NOTE = /^\d{1,2}\s*\.\s*\S/
  * 시작으로 잡혀, 주석은 손도 못 대고 부채 행 두 줄만 잘라 온 적이 있다.
  * 제목 줄은 첫 칸에만 글자가 있다.
  */
-function isHeading(cells) {
+export function isHeading(cells) {
   return cells.slice(1).every((c) => !String(c || '').trim())
 }
 

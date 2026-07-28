@@ -423,3 +423,44 @@ test('주식수 — K-IFRS 는 발행주식수가 보통주뿐이라 더해야 �
   assert.equal(s.commonShares, 4_000_000)
   assert.equal(s.totalShares, 4_685_800)
 })
+
+// ── 검토에서 드러난 것들 ──────────────────────────────────────
+test('금액 단위 — 백만원을 한 글자씩 지우면 "3,500백" 이 남아 실패했다', () => {
+  const withPrice = (p) => `
+9. 상환전환우선주
+(2) 세부내역은 다음과 같습니다.
+구분\t제1종 상환전환우선주
+주당발행가액\t${p}
+발행주식수\t1,000주
+발행일\t2024-01-01
+10. 다음주석
+`
+  assert.equal(parseRcps(docOf(withPrice('3,500백만원'))).issuePrice, 3_500_000_000)
+  assert.equal(parseRcps(docOf(withPrice('3,500천원'))).issuePrice, 3_500_000)
+  assert.equal(parseRcps(docOf(withPrice('120억원'))).issuePrice, 12_000_000_000)
+  assert.equal(parseRcps(docOf(withPrice('17,500원'))).issuePrice, 17_500)
+})
+
+// 자본금 라벨이 '보통주자본금' 인지 총액 '자본금' 인지에 따라 되짚은 수의 뜻이
+// 달라진다. 라벨을 못 읽었을 때 총액으로 넘겨짚으면 K-IFRS 가 뒤집힌다
+// (보통주 4,000,000 이 3,314,200 으로 깎였다).
+test('주식수 — 자본금 라벨을 모르면 우선주가 포함됐다고 넘겨짚지 않는다', async () => {
+  const { parseShares } = await import('../src/lib/parse/shares.js')
+  const s = parseShares({ fullText: '', rows: [] }, null, {
+    rcps: { shares: 685_800 },
+    capital: { issuedShares: 4_000_000, parValue: 500, capitalStock: 2_000_000_000 }, // 라벨 없음
+  })
+  assert.equal(s.commonShares, 4_000_000)
+  assert.equal(s.totalShares, 4_685_800)
+})
+
+test('주식수 — 총액 자본금 표기도 이중 계산하지 않는다', async () => {
+  const { parseShares } = await import('../src/lib/parse/shares.js')
+  const s = parseShares({ fullText: '', rows: [] }, null, {
+    rcps: { shares: 3_429 },
+    // 보통주·우선주를 합친 자본금으로 적은 서식: 23,429주 × 5,000원
+    capital: { issuedShares: 23_429, parValue: 5_000, capitalStock: 117_145_000, capitalStockLabel: '자본금' },
+  })
+  assert.equal(s.totalShares, 23_429)
+  assert.equal(s.commonShares, 20_000)
+})
