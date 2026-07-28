@@ -157,7 +157,12 @@ export function accumulateCompany(prev, report, owner) {
     // 같은 보고서 연도면 '당기'로 실린 값이 '전기' 비교치보다 정확하다.
     const oldSrc = old.sourceYear ?? old.year ?? -1
     const newSrc = entry.sourceYear ?? entry.year ?? -1
-    const takeNew = newSrc > oldSrc || (newSrc === oldSrc && old.fromPrior && !entry.fromPrior)
+    // 같은 보고서를 다시 올린 것이면 방금 읽은 값이 이긴다.
+    // 파서를 고쳐 다시 올려도 옛 값이 남아, 회사를 지웠다 받아야만 반영됐다
+    // (블룸에이아이 영업손실이 영업이익으로 남아 있었다).
+    const sameReport = Boolean(entry.reportId) && entry.reportId === old.reportId
+    const takeNew =
+      sameReport || newSrc > oldSrc || (newSrc === oldSrc && old.fromPrior && !entry.fromPrior)
 
     const restated =
       takeNew &&

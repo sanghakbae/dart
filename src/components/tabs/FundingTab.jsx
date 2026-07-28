@@ -1,8 +1,8 @@
 import { useCallback, useMemo } from 'react'
 import { Card, Tile, Callout, Badge } from '../ui'
 import { RemoteBar, RemoteEmpty } from '../RemoteBar'
-import { fetchFundingRounds, latestRoundValuation, roundValuation } from '../../lib/dart/funding'
-import { searchCompanies } from '../../lib/dart/api'
+import { latestRoundValuation, roundValuation } from '../../lib/dart/funding'
+import { fetchFunding } from '../../lib/externals'
 import { loadFunding, saveFunding } from '../../lib/storage'
 import { hasProxy } from '../../lib/proxyBase.js'
 import { abbrev, full } from '../../lib/format'
@@ -21,19 +21,8 @@ export default function FundingTab({ report }) {
   const companyName = report?.meta?.company || null
 
   // 자동으로 받지 않는다. 공시마다 원문을 한 번씩 받아야 해서 무겁다.
-  const pull = useCallback(
-    async (onPhase) => {
-      // 보고서에는 DART 고유번호가 없다. 회사명으로 기업 색인에서 찾는다.
-      // 이름이 정확히 같은 것만 받아들인다 — 부분일치를 쓰면 남의 회사를 물어 온다.
-      onPhase?.('고유번호 확인 중')
-      const hits = await searchCompanies(companyName, 40)
-      const norm = (x) => String(x || '').replace(/\s+/g, '')
-      const hit = hits.find((h) => norm(h.name) === norm(companyName))
-      if (!hit) throw new Error(`DART 에서 "${companyName}" 와 이름이 정확히 같은 회사를 찾지 못했습니다.`)
-      return fetchFundingRounds(hit.code, onPhase)
-    },
-    [companyName]
-  )
+  // (새 회사를 처음 등록할 때는 externals.prefetchExternals 가 미리 받아 둔다)
+  const pull = useCallback((onPhase) => fetchFunding(companyName, onPhase), [companyName])
 
   const { data, fetchedAt, stale, loading, fetching, phase, error, warning, fetchNow } = useCachedRemote({
     key: companyKey,

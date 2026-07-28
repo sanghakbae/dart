@@ -1,7 +1,8 @@
 import { useCallback, useMemo, useState } from 'react'
 import { Card, Tile, Callout, Badge, Seg } from '../ui'
 import { RemoteBar, RemoteEmpty } from '../RemoteBar'
-import { fetchEmployment, yearlyAverages, turnoverRate, periodSummary } from '../../lib/nps/api'
+import { yearlyAverages, turnoverRate, periodSummary } from '../../lib/nps/api'
+import { fetchEmploymentFor } from '../../lib/externals'
 import { loadEmployment, saveEmployment } from '../../lib/storage'
 import { hasProxy } from '../../lib/proxyBase.js'
 import { abbrev, full } from '../../lib/format'
@@ -33,7 +34,7 @@ export default function EmploymentTab({ report, timeline }) {
     load: loadEmployment,
     save: (k, v) => saveEmployment(k, { ...v, name: company, bizNo }),
     ready: Boolean(company),
-    fetch: useCallback(() => fetchEmployment(company, bizNo), [company, bizNo]),
+    fetch: useCallback(() => fetchEmploymentFor(company, bizNo), [company, bizNo]),
   })
 
   // 공단은 제공 시점 기준 12개월치만 준다. 2·3년은 받아온 것을 DB 에 쌓아

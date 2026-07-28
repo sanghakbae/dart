@@ -7,6 +7,7 @@ import {
 import { buildTimeline, splitByPeriodType } from './lib/analyze/series'
 import { useAuth, signOut, authAvailable } from './lib/auth'
 import { touchUser, bumpUpload } from './lib/usage'
+import { prefetchExternals } from './lib/externals'
 import Header from './components/Header'
 import SignIn from './components/SignIn'
 import AdminPage from './components/AdminPage'
@@ -44,14 +45,35 @@ const TABS = [
   { key: 'raw', label: '원문' },
 ]
 
+/**
+ * 보고 있던 화면을 주소에 담아 둔다 — `#/co/{회사}/{탭}/{보고서}`
+ *
+ * 새로고침하면 회사 목록으로 튕겨 처음부터 다시 찾아 들어가야 했다.
+ * 주소에 넣어 두면 새로고침해도 그 자리에 남고, 링크로 공유·북마크도 된다.
+ * 탭을 옮길 때마다 히스토리를 쌓지는 않는다(replaceState).
+ */
+function readRoute() {
+  const m = /^#\/co\/([^/]+)(?:\/([^/]+))?(?:\/(.+))?$/.exec(window.location.hash || '')
+  if (!m) return { companyKey: null, tab: 'summary', reportId: null }
+  const tab = m[2] ? decodeURIComponent(m[2]) : 'summary'
+  return {
+    companyKey: decodeURIComponent(m[1]),
+    // 주소를 손으로 고쳤거나 탭 이름이 바뀐 뒤일 수 있다.
+    tab: TABS.some((t) => t.key === tab) ? tab : 'summary',
+    reportId: m[3] ? decodeURIComponent(m[3]) : null,
+  }
+}
+
+const ROUTE0 = readRoute()
+
 export default function App() {
   const [companies, setCompanies] = useState([])
   const [loadingList, setLoadingList] = useState(true)
-  const [companyKey, setCompanyKey] = useState(null)
+  const [companyKey, setCompanyKey] = useState(ROUTE0.companyKey)
   const [reports, setReports] = useState([]) // 선택한 회사의 보고서들
   const [loadingReports, setLoadingReports] = useState(false)
-  const [activeId, setActiveId] = useState(null)
-  const [tab, setTab] = useState('summary')
+  const [activeId, setActiveId] = useState(ROUTE0.reportId)
+  const [tab, setTab] = useState(ROUTE0.tab)
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState(0)
   const [phase, setPhase] = useState('')
@@ -125,6 +147,26 @@ export default function App() {
     if (!admin) setAdminView(false)
   }, [admin])
 
+  // 보고 있는 화면을 주소에 새겨 둔다. 새로고침하면 여기서 다시 시작한다.
+  useEffect(() => {
+    const next = companyKey
+      ? `#/co/${encodeURIComponent(companyKey)}/${tab}${activeId ? `/${encodeURIComponent(activeId)}` : ''}`
+      : '#/'
+    if (window.location.hash !== next) {
+      window.history.replaceState(null, '', next)
+    }
+  }, [companyKey, tab, activeId])
+
+  // 주소에 있던 회사가 지워졌거나 볼 권한이 없으면 목록으로 돌린다.
+  // (그대로 두면 "보고서를 불러오지 못했습니다" 만 뜬 채 갇힌다)
+  useEffect(() => {
+    if (loadingList || !companyKey || !companies.length) return
+    if (!companies.some((c) => c.key === companyKey)) {
+      setCompanyKey(null)
+      setActiveId(null)
+    }
+  }, [loadingList, companies, companyKey])
+
   const company = useMemo(() => companies.find((c) => c.key === companyKey) || null, [companies, companyKey])
 
   // 회사를 선택하면 그 회사의 보고서들을 불러온다.
@@ -174,6 +216,9 @@ export default function App() {
     async (files) => {
       setBusy(true)
       let lastCompany = null
+      // 이번 업로드로 처음 생긴 회사들. 등록 직후 외부 자료를 한 번 받아 둔다.
+      const known = new Set(companies.map((c) => c.key))
+      const fresh = new Map()
       for (let i = 0; i < files.length; i++) {
         const file = files[i]
         const base = i / files.length
@@ -194,6 +239,9 @@ export default function App() {
             [`${ck}/${saved.id}`]: { rawText: report.rawText, blocks: report.blocks, notes: report.notes, sections: report.sections },
           }))
           lastCompany = ck
+          if (!known.has(ck) && !fresh.has(ck)) {
+            fresh.set(ck, { company: report.meta.company, bizNo: report.meta.bizNo || null })
+          }
 
           // 열려 있는 회사라면 보고서 목록도 즉시 갱신한다.
           setReports((prev) => (ck === companyKey ? [summaryOf(saved), ...prev.filter((r) => r.id !== saved.id)] : prev))
@@ -214,9 +262,26 @@ export default function App() {
       setBusy(false)
       setPhase('')
       await refreshCompanies()
+
+      // 새 회사는 고용·투자·특허를 미리 받아 둔다. 탭마다 '받아오기' 를 세 번
+      // 누르게 하지 않으려는 것이고, 등록은 회사당 한 번뿐이라 한도에도 부담이 없다.
+      // 업로드 흐름을 막지 않도록 뒤에서 돌리고, 실패해도 조용히 넘긴다.
+      for (const [ck, info] of fresh) {
+        toast(`${info.company} — 고용·투자·특허를 받아오는 중입니다`)
+        prefetchExternals(ck, info)
+          .then((got) => {
+            const names = [
+              got.employment && '고용',
+              got.funding && '투자',
+              got.patents && '특허',
+            ].filter(Boolean)
+            if (names.length) toast(`${info.company} — ${names.join('·')} 받아왔습니다`)
+          })
+          .catch(() => {})
+      }
       if (lastCompany && !companyKey) setCompanyKey(null) // 목록에 머문다
     },
-    [companyKey, refreshCompanies, toast]
+    [companyKey, companies, refreshCompanies, toast]
   )
 
   // 실재하지 않는 가상 회사로 만든 기능 확인용 예시 파일

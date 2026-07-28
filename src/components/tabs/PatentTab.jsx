@@ -1,7 +1,8 @@
 import { useCallback, useMemo } from 'react'
 import { Card, Tile, Callout, Badge } from '../ui'
 import { RemoteBar, RemoteEmpty } from '../RemoteBar'
-import { proxyUrl, hasProxy } from '../../lib/proxyBase.js'
+import { hasProxy } from '../../lib/proxyBase.js'
+import { fetchPatents } from '../../lib/externals'
 import { loadPatents, savePatents } from '../../lib/storage'
 import { useCachedRemote } from '../../lib/useCachedRemote'
 
@@ -140,18 +141,6 @@ export default function PatentTab({ report }) {
       </Card>
     </div>
   )
-}
-
-/**
- * 이름 변형(주식회사 유무)과 정확 일치 판정은 프록시가 한다.
- * 출원인 검색이 토큰 검색이라 "알체라" 로 부르면 2.3만 건이 걸리는데,
- * 그 걸러내기를 화면에서 하면 매번 상류를 여러 번 두드려야 한다.
- */
-async function fetchPatents(company) {
-  const res = await fetch(proxyUrl(`/api/kipris/patents?applicant=${encodeURIComponent(company)}`))
-  const body = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(body?.error || `요청 실패 (${res.status})`)
-  return body
 }
 
 /**

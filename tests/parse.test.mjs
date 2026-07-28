@@ -662,3 +662,28 @@ test('DART 셀 태그 — 빈 셀과 자기닫음 셀도 처리한다', () => {
   assert.equal(htmlifyDartCells('<TE ADELIM="1"></TE>'), '<td ADELIM="1"></td>')
   assert.equal(htmlifyDartCells('<TE ADELIM="1"/>'), '<td ADELIM="1"/>')
 })
+
+// 파서를 고쳐 같은 보고서를 다시 올려도 회사 문서에는 옛 값이 남아 있었다.
+// 회사를 통째로 지웠다 받아야만 반영돼, 블룸에이아이의 잘못된 영업이익이
+// 목록 카드에 그대로 떠 있었다.
+test('같은 보고서를 다시 올리면 방금 읽은 값이 이긴다', () => {
+  const mk = (values) => ({
+    createdAt: 1000,
+    meta: { company: '블룸에이아이', fiscalYear: 2025, periodType: 'FY', periodLabel: '연간', basis: '별도' },
+    periods: [{ id: 'current', year: 2025 }, { id: 'prior', year: 2024 }],
+    values,
+    opinion: { type: 'unqualified', label: '적정의견', tone: 'good' },
+  })
+
+  // 옛 파서: 영업손실을 양수로 읽었다
+  let co = accumulateCompany(null, mk({ operatingProfit: { current: 4_118_907_794, prior: 3_244_654_243 } }))
+  assert.equal(co.periods['FY-2025-s'].values.operatingProfit, 4_118_907_794)
+
+  // 고친 파서로 같은 보고서를 다시 올린다
+  co = accumulateCompany(co, mk({ operatingProfit: { current: -4_118_907_794, prior: -3_244_654_243 } }))
+  assert.equal(co.periods['FY-2025-s'].values.operatingProfit, -4_118_907_794, '다시 읽은 값이 이겨야 한다')
+  assert.equal(co.periods['FY-2024-s'].values.operatingProfit, -3_244_654_243, '전기 비교치도 갱신된다')
+  // 같은 문서를 다시 읽은 것이지 과거 수치가 재작성된 게 아니다
+  assert.equal(co.periods['FY-2025-s'].restated ?? false, false)
+  assert.equal(co.reportCount, 1, '같은 보고서라 건수는 늘지 않는다')
+})
