@@ -72,13 +72,18 @@ export function parseShares(doc, notes, extra = {}) {
  *   + 주식선택권 133,800 = 완전희석 4,819,600
  */
 function composeShareCounts(shares, rcps, capital) {
-  const common = shares.issuedShares
+  const issued = shares.issuedShares
   const preferred = rcps?.shares ?? null
   const potential = capital?.stockOptions?.potentialShares ?? null
 
+  // 자본금 주석의 발행주식수가 이미 우선주를 품고 있는지 가른다.
+  // 그냥 더하면 이중으로 세어 총수가 부풀려진다(무하유 2024년 23,429주가 26,858주로).
+  const bundled = includesPreferred(capital, issued, preferred)
+  const common = bundled ? issued - preferred : issued
+
   // 보통주를 못 읽었으면 총수를 지어내면 안 된다. 우선주만 총수로 잡히면
   // 기업가치가 그 수로 매겨져 통째로 틀어진다.
-  const total = common != null ? common + (preferred ?? 0) : null
+  const total = issued != null ? (bundled ? issued : issued + (preferred ?? 0)) : null
   const diluted = total != null ? total + (potential ?? 0) : null
 
   const byType = []
@@ -95,6 +100,29 @@ function composeShareCounts(shares, rcps, capital) {
     // 총 주식수를 보통주만으로 잡고 있었는지 — 화면에서 이 사실을 밝혀야 한다.
     preferredHidden: preferred != null && preferred > 0,
   }
+}
+
+/**
+ * 자본금 주석의 발행주식수가 이미 우선주를 품고 있는가.
+ *
+ * 회계기준에 따라 다르다.
+ *   K-IFRS  : 상환전환우선주를 부채로 뺀다 → 발행주식수는 보통주만
+ *   K-GAAP  : 자본(우선주자본금)으로 본다  → 발행주식수에 우선주가 함께 들어 있다
+ *
+ * 무하유가 딱 이 경우다. 2024년 보고서(K-GAAP)는 자본금을 보통주 1억 + 우선주
+ * 1,714만으로 나눠 적고 발행주식수를 23,429주(= 보통주 20,000 + 우선주 3,429)로
+ * 적었다. 2025년(K-IFRS)은 4,000,000주(보통주만)로 적었다.
+ *
+ * 문서에 기준이 명시돼 있지 않아도, 보통주자본금 ÷ 액면가로 보통주 수를 되짚어
+ * 견주면 갈린다 — 우선주를 뺀 나머지가 그 수와 맞으면 이미 품고 있는 것이다.
+ */
+function includesPreferred(capital, issued, preferred) {
+  if (!preferred || issued == null) return false
+  const par = capital?.parValue
+  const stock = capital?.capitalStock
+  if (!par || !stock) return false
+  const impliedCommon = stock / par
+  return Math.abs(issued - preferred - impliedCommon) < 1
 }
 
 /**

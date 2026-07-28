@@ -53,7 +53,7 @@ const DETAIL = [
  */
 export function parseRcps(doc) {
   const rows = (doc?.rows || []).map((r) => (r.cells || []).map((c) => String(c).trim()))
-  const zone = noteZone(rows, HEAD)
+  const zone = noteZone(rows, HEAD) || detailZone(rows)
   if (!zone) return null
 
   const liability = readLiability(zone)
@@ -81,6 +81,34 @@ export function parseRcps(doc) {
     totalLiability: sumNullable([liability?.carrying, derivative?.current]),
     ...summarize(detailed, liability),
   }
+}
+
+/**
+ * 독립 주석이 없는 서식을 위한 구역 찾기.
+ *
+ * 일반기업회계기준(K-GAAP) 보고서는 상환전환우선주를 따로 떼지 않고 자본금 주석
+ * 아래 "(4) 당기말 현재 전환상환우선주의 세부내역은 다음과 같습니다." 로 붙인다.
+ * 그러면 "N. 상환전환우선주" 제목이 없어 noteZone 이 못 찾는다 — 무하유 2024년이
+ * 그래서 통째로 안 잡혔다(120억 투자가 화면에서 사라졌다).
+ *
+ * 세부내역을 여는 문장을 찾아 그 아래 표만 잘라 온다.
+ */
+const DETAIL_OPENER = /(전환상환우선주|상환전환우선주).{0,20}세부내역/
+
+function detailZone(rows) {
+  const start = rows.findIndex((cells) => DETAIL_OPENER.test((cells[0] || '').replace(/\s+/g, '')))
+  if (start < 0) return null
+
+  // 표가 끝나는 곳까지 — 다음 주석 제목이 나오면 멈춘다.
+  const NEXT = /^\d{1,2}\s*\.\s*\S/
+  let end = rows.length
+  for (let i = start + 1; i < rows.length; i++) {
+    if (NEXT.test((rows[i][0] || '').trim())) {
+      end = i
+      break
+    }
+  }
+  return rows.slice(start, end)
 }
 
 /** (1) 부채 내역. 열은 당기말·전기말·전기초 순이다. */
@@ -135,7 +163,7 @@ function readSeries(zone) {
     out.push({
       name: names?.[i] || `제${i + 1}종 상환전환우선주`,
       ...raw,
-      issuePrice: parseAmount(String(raw.issuePrice || '').replace(/원/g, '')),
+      issuePrice: readMoney(raw.issuePrice),
       shares: parseAmount(String(raw.shares || '').replace(/주/g, '')),
       issueDate: readDate(raw.issueDate),
     })
@@ -284,6 +312,19 @@ export function redemptionAt(rcps, years) {
   const rate = rcps?.statedRate ?? rcps?.impliedRate
   if (!face || !rate || !years || rcps?.uniformRate === false) return null
   return Math.round(face * (1 + rate / 100) ** years)
+}
+
+/**
+ * 금액 칸. 단위가 숫자에 붙어 오는 경우가 있다 — "3,500천원" (= 350만원).
+ * 그냥 '원'만 떼면 "3,500천" 이 남아 파싱에 실패하고, 발행가가 통째로 비었다
+ * (무하유 2024년: 주당 350만원을 못 읽었다).
+ */
+function readMoney(raw) {
+  const s = String(raw ?? '').trim()
+  if (!s) return null
+  const scale = /백만\s*원/.test(s) ? 1e6 : /천\s*원/.test(s) ? 1e3 : /억\s*원/.test(s) ? 1e8 : 1
+  const n = parseAmount(s.replace(/[백만천억]?\s*원/g, ''))
+  return n == null ? null : n * scale
 }
 
 function readDate(raw) {

@@ -352,3 +352,74 @@ test('고용 — 12개월이면 예전 산식과 같은 값', async () => {
   // 24명 ÷ 100명 = 24.0%
   assert.equal(turnoverRate(flat).rate, 24)
 })
+
+// ── 일반기업회계기준(K-GAAP) 서식 ────────────────────────────
+// 무하유 2024년 보고서. 세 가지가 K-IFRS 와 다르다.
+//  1) 독립 주석이 없다 — 자본금 주석 아래 "(4) … 세부내역" 으로 붙는다
+//  2) 발행가가 "3,500천원" (천원 단위)
+//  3) RCPS 를 부채가 아니라 자본(우선주자본금)으로 본다 → 발행주식수에 이미 포함
+// 이 셋 때문에 120억 투자가 화면에서 통째로 사라졌었다.
+const KGAAP_NOTE = `
+12. 자본금과 주식발행초과금
+(1) 당기말 현재 자본금의 내용은 다음과 같습니다.
+구 분\t당기말\t전기말
+수권주식수\t80,000주\t80,000주
+발행주식수\t23,429주\t23,429주
+1주당 금액\t5,000\t5,000
+보통주자본금\t100,000,000\t100,000,000
+(3) 당기 중 자본금과 주식발행초과금의 변동 내용은 없습니다.
+(4) 당기말 현재 전환상환우선주의 세부내역은 다음과 같습니다.
+구분\t제1종 상환전환우선주
+대상자\t각 투자자
+주당발행가액\t3,500천원
+발행주식수\t3,429주
+발행일\t2023년 10월 21일
+의결권\t1주당 1개의 의결권
+존속기간\t발행일로부터 10년(존속기간 이후 자동으로 보통주로 전환)
+배당\t액면가액 기준 0% 누적적/참가적 우선주
+상환청구 기간\t발행일로부터 3년이 경과한 날부터 존속기간 만료일까지
+상환금액\t본건 종류주식의 1주당 발행가액에 대하여 연복리 7%의 비율로 계산한 이자에서 이미 지급된 배당금을 차감한 금액
+13. 주식기준보상거래
+`
+
+test('RCPS — 독립 주석이 없어도 자본금 주석 아래 세부내역을 읽는다', () => {
+  const r = parseRcps(docOf(KGAAP_NOTE))
+  assert.equal(r.shares, 3_429)
+  assert.equal(r.issueDate, '2023-10-21')
+  assert.equal(r.statedRate, 7)
+})
+
+test('RCPS — 천원 단위 발행가를 원으로 환산한다', () => {
+  const r = parseRcps(docOf(KGAAP_NOTE))
+  assert.equal(r.issuePrice, 3_500_000) // "3,500천원"
+  // 3,429주 × 350만원 = 120.015억. 부채 표가 없어 곱으로 구한다.
+  assert.equal(r.raised, 12_001_500_000)
+})
+
+test('주식수 — K-GAAP 은 발행주식수에 우선주가 이미 들어 있다', async () => {
+  const { parseShares } = await import('../src/lib/parse/shares.js')
+  const rcps = parseRcps(docOf(KGAAP_NOTE))
+  const capital = parseCapital(docOf(KGAAP_NOTE))
+  const doc = {
+    fullText: '최대 주주이자 대표이사인 신동호는 13,588주(지분율 58.00%)의 주식을 보유하고 있습니다.',
+    rows: [],
+  }
+  const s = parseShares(doc, null, { rcps, capital })
+  // 23,429 + 3,429 = 26,858 로 이중 계산하면 안 된다
+  assert.equal(s.totalShares, 23_429)
+  assert.equal(s.commonShares, 20_000)
+  assert.equal(s.preferredShares, 3_429)
+  // 두 기준 지분율이 2025년(K-IFRS) 보고서와 같은 값이어야 한다
+  assert.equal(Math.round(s.majorShareholder.ratioCommon * 100) / 100, 67.94)
+  assert.equal(Math.round(s.majorShareholder.ratioTotal * 100) / 100, 58)
+})
+
+test('주식수 — K-IFRS 는 발행주식수가 보통주뿐이라 더해야 한다', async () => {
+  const { parseShares } = await import('../src/lib/parse/shares.js')
+  const s = parseShares({ fullText: '', rows: [] }, null, {
+    rcps: { shares: 685_800 },
+    capital: { issuedShares: 4_000_000, parValue: 500, capitalStock: 2_000_000_000 },
+  })
+  assert.equal(s.commonShares, 4_000_000)
+  assert.equal(s.totalShares, 4_685_800)
+})
