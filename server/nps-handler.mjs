@@ -12,6 +12,8 @@
 //    각 월에 상세·기간별 조회를 다시 걸어야 한다.
 //  - 공단이 '제공시점 기준 1년치' 만 남기므로 36개월은 받을 수 없다.
 
+import { nameVariants, normName } from './company-name.mjs'
+
 const NPS = 'https://apis.data.go.kr/B552015/NpsBplcInfoInqireServiceV2'
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' }
 
@@ -64,14 +66,6 @@ async function call(op, params, key) {
  *
  * 이름이 앞에서부터 맞아야 그 회사다. 가운데 끼어 있으면 남의 현장 이름이다.
  */
-function normName(s) {
-  return String(s || '')
-    .normalize('NFC')
-    .replace(/주식회사|유한회사|\(주\)|（주）|㈜/g, '')
-    .replace(/[^가-힣A-Za-z0-9]/g, '')
-    .toLowerCase()
-}
-
 function nameScore(wkplNm, query) {
   const a = normName(wkplNm)
   if (!a) return 0
@@ -81,7 +75,7 @@ function nameScore(wkplNm, query) {
     const b = normName(v)
     if (!b) continue
     if (a === b) best = Math.max(best, 3) // 상호가 그대로
-    else if (a.startsWith(b)) best = Math.max(best, 2) // 지점·사업장 (무하유 → 무하유서울지점)
+    else if (a.startsWith(b)) best = Math.max(best, 2) // 지점·사업장
   }
   return best // 0 이면 이름만 들어간 남의 현장
 }
@@ -94,49 +88,6 @@ function nameScore(wkplNm, query) {
  * "SK하이닉스" 로는 하청업체 현장만 걸리고 본사는 "에스케이하이닉스 주식회사"
  * 로 등록돼 있다. 흔한 약칭을 풀어 함께 찾는다.
  */
-// 알파벳 한 글자를 한글 음으로. SDS → 에스디에스 처럼 조합해서 만든다.
-const LETTER = {
-  A: '에이', B: '비', C: '씨', D: '디', E: '이', F: '에프', G: '지', H: '에이치',
-  I: '아이', J: '제이', K: '케이', L: '엘', M: '엠', N: '엔', O: '오', P: '피',
-  Q: '큐', R: '알', S: '에스', T: '티', U: '유', V: '브이', W: '더블유', X: '엑스',
-  Y: '와이', Z: '지',
-}
-
-// 음이 뭉치면 실제 상호와 달라지는 것들. 조합보다 이 표를 먼저 쓴다.
-const ALIAS = { LG: '엘지', KT: '케이티', SK: '에스케이', POSCO: '포스코' }
-
-/** 영문 약칭을 한글 음으로 읽는다. SK → 에스케이, SDS → 에스디에스 */
-function readLetters(abbr) {
-  const up = abbr.toUpperCase()
-  if (ALIAS[up]) return ALIAS[up]
-  return [...up].map((c) => LETTER[c] || c).join('')
-}
-
-/**
- * 상호 표기 변형.
- *
- * 공단에는 법인 등기 상호가 그대로 들어 있어 영문 약칭을 한글로 적는다 —
- * "SK하이닉스" 로는 하청업체 현장만 걸리고 본사는 "에스케이하이닉스 주식회사"
- * 로 등록돼 있다. 이름 안의 대문자 덩어리를 한글 음으로 바꿔 함께 찾는다.
- *   SK하이닉스   → 에스케이하이닉스
- *   삼성SDS      → 삼성에스디에스
- *   LG CNS       → 엘지씨엔에스
- */
-export function nameVariants(name) {
-  const base = String(name || '').trim()
-  if (!base) return []
-  const out = [base]
-
-  // 대문자 덩어리(2~6자)를 모두 한글 음으로 바꾼 형태
-  const spelled = base.replace(/[A-Z]{2,6}/g, (m) => readLetters(m))
-  if (spelled !== base) out.push(spelled)
-  // 바꾼 뒤 남은 공백은 붙여 쓰는 경우가 많다(LG CNS → 엘지씨엔에스)
-  const squished = spelled.replace(/\s+/g, '')
-  if (squished !== spelled) out.push(squished)
-
-  return [...new Set(out.filter(Boolean))]
-}
-
 async function searchWorkplaces(name, key) {
   // 표기가 달라 본사를 놓치는 일이 많다. 변형까지 훑어 합친다.
   const variants = nameVariants(name)

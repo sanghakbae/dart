@@ -9,6 +9,8 @@
 //  - 엔드포인트 철자 'Sevice' 는 KIPRIS 쪽 실제 표기다(오타가 아니다).
 //  - 응답이 XML 뿐이라 여기서 JSON 으로 바꿔 넘긴다.
 
+import { nameVariants, normName as sharedNorm } from './company-name.mjs'
+
 const KIPRIS = 'http://plus.kipris.or.kr/openapi/rest/patUtiModInfoSearchSevice'
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' }
 // KIPRIS 는 한 번 부르는 데 10초를 넘기는 일이 잦다(상태 점검도 12.7초 걸렸다).
@@ -92,17 +94,26 @@ const PAGE_SIZE = 30
 /** 상류 호출 횟수 상한. 무료 한도가 월 1,000회라 한 회사에 이보다 더 쓰지 않는다. */
 const MAX_PAGES = 20
 
-function normName(s) {
-  return String(s || '')
-    .normalize('NFC')
-    .replace(/주식회사|유한회사|\(주\)|㈜/g, '')
-    .replace(/\s+/g, '')
-    .toLowerCase()
-}
+const normName = sharedNorm
 
+/**
+ * 찾아볼 출원인명.
+ *
+ * KIPRIS 에도 등기 상호가 그대로 들어 있어 영문 약칭을 한글 음으로 적는다 —
+ * "SK하이닉스" 로는 0건이고 "에스케이하이닉스" 로는 599건이 나온다.
+ * 표기 변형마다 '주식회사 ○○' · 원래 이름 · 법인격 없는 이름을 함께 시도한다.
+ */
 function candidates(company) {
-  const bare = normName(company)
-  return [...new Set([`주식회사 ${bare}`, company, bare])].filter(Boolean)
+  const out = []
+  const seen = new Set()
+  for (const v of nameVariants(company)) {
+    const bare = normName(v)
+    if (!bare || seen.has(bare)) continue
+    seen.add(bare)
+    // 법인격을 붙인 쪽이 더 좁게 걸린다. 그것부터 시도한다.
+    out.push(`주식회사 ${bare}`, bare)
+  }
+  return out
 }
 
 /**
@@ -163,6 +174,14 @@ async function collect(name, key) {
       })
     }
     scanned += onPage
+
+    // 첫 페이지에 우리 이름이 하나도 없으면 이 표기는 아니다. 다음 후보로 넘긴다.
+    //
+    // 예전에는 매치가 0건이어도 MAX_PAGES 까지 훑었다. "SK하이닉스" 처럼 표기가
+    // 어긋난 이름은 상류에 수만 건이 걸리는데, KIPRIS 한 번 호출이 10초를 넘으니
+    // 후보 하나에 몇 분씩 쓰고도 0건으로 끝났다(에스케이하이닉스 599건을 못 찾았다).
+    if (page === 1 && !patents.length) break
+
     if (onPage < PAGE_SIZE || scanned >= total) break
   }
 
