@@ -15,7 +15,9 @@ import {
 import { accumulateCompany, companyView, companyKeyOf, reportIdOf } from './company.js'
 import { isAdmin } from './auth.js'
 
-const CHUNK = 400_000 // Firestore 문서 1MB 한도 대비 여유 있게
+// Firestore 문서 한도는 1MiB 다. 글자 수로 자르면 한글이 UTF-8 에서 3바이트라
+// 400,000자가 1.2MB 가 되어 한도를 넘는다. 바이트로 재서 자른다.
+const CHUNK_BYTES = 400_000
 const COL = 'companies'
 
 /**
@@ -71,13 +73,34 @@ function contentParts(report) {
   ]
 }
 
+const BYTES = new TextEncoder()
+
+/** UTF-8 바이트로 CHUNK_BYTES 를 넘지 않게 자른다(문자 경계는 지킨다). */
+function splitByBytes(text) {
+  const pieces = []
+  let buf = ''
+  let size = 0
+  for (const ch of text) {
+    const n = BYTES.encode(ch).length
+    if (size + n > CHUNK_BYTES && buf) {
+      pieces.push(buf)
+      buf = ''
+      size = 0
+    }
+    buf += ch
+    size += n
+  }
+  if (buf || !pieces.length) pieces.push(buf)
+  return pieces
+}
+
 function chunkify(parts) {
   const out = []
   for (const p of parts) {
-    const total = Math.max(1, Math.ceil(p.text.length / CHUNK))
-    for (let i = 0; i < total; i++) {
-      out.push({ id: `${p.kind}-${String(i).padStart(3, '0')}`, kind: p.kind, seq: i, total, text: p.text.slice(i * CHUNK, (i + 1) * CHUNK) })
-    }
+    const pieces = splitByBytes(p.text || '')
+    pieces.forEach((text, i) => {
+      out.push({ id: `${p.kind}-${String(i).padStart(3, '0')}`, kind: p.kind, seq: i, total: pieces.length, text })
+    })
   }
   return out
 }
@@ -157,7 +180,7 @@ function keysOf(report) {
  *
  * @returns {{report:object, companyKey:string, storage:'firestore', warning:null}}
  */
-export async function saveReport(report) {
+export async function saveReport(report, onProgress) {
   const { companyKey, reportId } = keysOf(report)
   const withKeys = { ...report, companyKey, id: reportId }
 
@@ -165,7 +188,7 @@ export async function saveReport(report) {
     throw new Error('Firebase 설정이 없어 저장할 수 없습니다. .env 의 VITE_FIREBASE_* 값을 확인해 주세요.')
   }
   try {
-    await saveToFirestore(withKeys, companyKey, reportId)
+    await saveToFirestore(withKeys, companyKey, reportId, onProgress)
   } catch (e) {
     throw new Error(firestoreHint(e))
   }
@@ -452,7 +475,7 @@ const companyDoc = (ck) => doc(db, COL, ck)
 const reportDoc = (ck, rid) => doc(db, COL, ck, 'reports', rid)
 const contentCol = (ck, rid) => collection(db, COL, ck, 'reports', rid, 'content')
 
-async function saveToFirestore(report, ck, rid) {
+async function saveToFirestore(report, ck, rid, onProgress) {
   // 회사 문서는 읽고-병합-쓰기라 트랜잭션으로 처리한다.
   // (같은 연도를 '당기'로 보고한 값이 '전기' 비교치를 덮어써야 하므로 merge 만으론 부족하다)
   await runTransaction(db, async (txn) => {
@@ -471,6 +494,9 @@ async function saveToFirestore(report, ck, rid) {
   await setDoc(reportDoc(ck, rid), { ...toSummary(report), storedAt: Date.now(), storage: 'firestore' })
 
   const chunks = chunkify(contentParts(report))
+  // 8MB 짜리 사업보고서는 조각이 여러 개라 몇십 초씩 걸린다. 진행을 알리지 않으면
+  // "DB에 누적 중" 에서 멈춘 것처럼 보인다.
+  onProgress?.(0, chunks.length)
   const prev = await getDocs(contentCol(ck, rid))
   let batch = writeBatch(db)
   let ops = 0
@@ -483,8 +509,10 @@ async function saveToFirestore(report, ck, rid) {
     batch.delete(d.ref)
     if (++ops >= 400) await flush()
   }
+  let saved = 0
   for (const c of chunks) {
     batch.set(doc(contentCol(ck, rid), c.id), c)
+    onProgress?.(++saved, chunks.length)
     if (++ops >= 400) await flush()
   }
   await flush()

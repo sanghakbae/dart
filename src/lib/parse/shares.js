@@ -272,6 +272,9 @@ function findShareholderTable(rows) {
 
 const SOURCE_HINT = /주주|지분율|주식수|자본금|주식선택권|스톡옵션|자기주식|액면/
 
+/** 요약 문서에 담을 주석 본문 길이. 전체는 주석 탭·원문에서 본다. */
+const NOTE_EXCERPT = 800
+
 /** 지분·주식 수치의 근거가 되는 주석을 본문째 골라 담는다. */
 function collectSourceNotes(notes, shares) {
   const items = notes?.items || []
@@ -287,8 +290,19 @@ function collectSourceNotes(notes, shares) {
       continue
     }
     // content(표) 는 배열의 배열이라 Firestore 에 그대로 못 넣는다.
-    // 표는 주석 탭 데이터에서 주석 번호로 찾아 쓰고, 여기엔 본문 텍스트만 담는다.
-    picked.push({ no: n.no, title: n.title, page: n.page, body })
+    // 표는 주석 탭 데이터에서 주석 번호로 찾아 쓴다.
+    //
+    // 본문은 발췌만 담는다. 통째로 넣었더니 SK하이닉스 사업보고서에서 이 필드만
+    // 761KB 가 되어 요약 문서(1MiB 한도)를 거의 채웠고, 회사·보고서 목록을 열
+    // 때마다 그걸 다시 내려받아 저장이 하염없이 걸렸다. 어차피 본문이 로드되면
+    // NoteBody 가 content 로 대체하므로, 여기 body 는 로딩 중에만 보인다.
+    picked.push({
+      no: n.no,
+      title: n.title,
+      page: n.page,
+      body: body.length > NOTE_EXCERPT ? `${body.slice(0, NOTE_EXCERPT)}…` : body,
+      length: body.length,
+    })
     if (picked.length >= 6) break
   }
   return picked

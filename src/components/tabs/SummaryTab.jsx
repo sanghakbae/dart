@@ -317,7 +317,7 @@ function ShareCard({ shares, notes, curLabel }) {
       {sourceNotes.length > 0 && (
         <div style={{ marginTop: 16, borderTop: '1px solid var(--border)' }}>
           {sourceNotes.map((n) => (
-            <Disclose key={n.no} summary={`근거 주석 ${n.no}. ${n.title}`} count={`${(n.body || '').length.toLocaleString('ko-KR')}자${n.page ? ` · ${n.page}p` : ''}`}>
+            <Disclose key={n.no} summary={`근거 주석 ${n.no}. ${n.title}`} count={`${(n.length ?? (n.body || '').length).toLocaleString('ko-KR')}자${n.page ? ` · ${n.page}p` : ''}`}>
               {/* 표 구조는 주석 데이터에서 번호로 찾아 쓴다(요약 문서에는 중첩 배열을 담지 않는다) */}
               <NoteBody content={noteContentOf(notes, n.no)} body={n.body} muted />
             </Disclose>

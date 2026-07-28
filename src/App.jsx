@@ -215,7 +215,10 @@ export default function App() {
             if (msg) setPhase(`${file.name} — ${msg}`)
           })
           setPhase(`${file.name} DB에 누적 중`)
-          const { report: saved, companyKey: ck, storage: where, warning, dbState: state } = await saveReport(report)
+          const { report: saved, companyKey: ck, storage: where, warning, dbState: state } = await saveReport(
+            report,
+            (done, total) => setPhase(`${file.name} DB에 누적 중 (${done}/${total} 조각)`)
+          )
           if (state) setDbState(state)
           bumpUpload()
 
