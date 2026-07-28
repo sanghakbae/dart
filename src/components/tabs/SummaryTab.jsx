@@ -78,6 +78,7 @@ export default function SummaryTab({ report, timeline }) {
                 delta={t.delta}
                 deltaLabel={`vs ${priLabel}`}
                 worseWhenUp={t.worseWhenUp}
+                alwaysBad={t.alwaysBad}
               />
             ))}
           </div>

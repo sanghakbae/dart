@@ -74,16 +74,76 @@ function normName(s) {
 
 function nameScore(wkplNm, query) {
   const a = normName(wkplNm)
-  const b = normName(query)
-  if (!a || !b) return 0
-  if (a === b) return 3 // 상호가 그대로
-  if (a.startsWith(b)) return 2 // 지점·사업장 (무하유 → 무하유서울지점)
-  return 0 // 이름만 들어간 남의 현장
+  if (!a) return 0
+  let best = 0
+  // "SK하이닉스" 로 물었어도 공단에는 "에스케이하이닉스" 로 있다. 변형까지 견준다.
+  for (const v of nameVariants(query)) {
+    const b = normName(v)
+    if (!b) continue
+    if (a === b) best = Math.max(best, 3) // 상호가 그대로
+    else if (a.startsWith(b)) best = Math.max(best, 2) // 지점·사업장 (무하유 → 무하유서울지점)
+  }
+  return best // 0 이면 이름만 들어간 남의 현장
 }
 
 /** 사업장 검색 — 월별 행에서 최신 월을 대표로 삼고 월별 seq 는 따로 모아 둔다. */
+/**
+ * 상호 표기 변형.
+ *
+ * 공단에는 법인 등기 상호가 그대로 들어 있어 영문 약칭을 한글로 적는다 —
+ * "SK하이닉스" 로는 하청업체 현장만 걸리고 본사는 "에스케이하이닉스 주식회사"
+ * 로 등록돼 있다. 흔한 약칭을 풀어 함께 찾는다.
+ */
+// 알파벳 한 글자를 한글 음으로. SDS → 에스디에스 처럼 조합해서 만든다.
+const LETTER = {
+  A: '에이', B: '비', C: '씨', D: '디', E: '이', F: '에프', G: '지', H: '에이치',
+  I: '아이', J: '제이', K: '케이', L: '엘', M: '엠', N: '엔', O: '오', P: '피',
+  Q: '큐', R: '알', S: '에스', T: '티', U: '유', V: '브이', W: '더블유', X: '엑스',
+  Y: '와이', Z: '지',
+}
+
+// 음이 뭉치면 실제 상호와 달라지는 것들. 조합보다 이 표를 먼저 쓴다.
+const ALIAS = { LG: '엘지', KT: '케이티', SK: '에스케이', POSCO: '포스코' }
+
+/** 영문 약칭을 한글 음으로 읽는다. SK → 에스케이, SDS → 에스디에스 */
+function readLetters(abbr) {
+  const up = abbr.toUpperCase()
+  if (ALIAS[up]) return ALIAS[up]
+  return [...up].map((c) => LETTER[c] || c).join('')
+}
+
+/**
+ * 상호 표기 변형.
+ *
+ * 공단에는 법인 등기 상호가 그대로 들어 있어 영문 약칭을 한글로 적는다 —
+ * "SK하이닉스" 로는 하청업체 현장만 걸리고 본사는 "에스케이하이닉스 주식회사"
+ * 로 등록돼 있다. 이름 안의 대문자 덩어리를 한글 음으로 바꿔 함께 찾는다.
+ *   SK하이닉스   → 에스케이하이닉스
+ *   삼성SDS      → 삼성에스디에스
+ *   LG CNS       → 엘지씨엔에스
+ */
+export function nameVariants(name) {
+  const base = String(name || '').trim()
+  if (!base) return []
+  const out = [base]
+
+  // 대문자 덩어리(2~6자)를 모두 한글 음으로 바꾼 형태
+  const spelled = base.replace(/[A-Z]{2,6}/g, (m) => readLetters(m))
+  if (spelled !== base) out.push(spelled)
+  // 바꾼 뒤 남은 공백은 붙여 쓰는 경우가 많다(LG CNS → 엘지씨엔에스)
+  const squished = spelled.replace(/\s+/g, '')
+  if (squished !== spelled) out.push(squished)
+
+  return [...new Set(out.filter(Boolean))]
+}
+
 async function searchWorkplaces(name, key) {
-  const rows = await call('getBassInfoSearchV2', { wkplNm: name, numOfRows: 100, pageNo: 1 }, key)
+  // 표기가 달라 본사를 놓치는 일이 많다. 변형까지 훑어 합친다.
+  const variants = nameVariants(name)
+  const rows = []
+  for (const v of variants) {
+    rows.push(...(await call('getBassInfoSearchV2', { wkplNm: v, numOfRows: 100, pageNo: 1 }, key)))
+  }
   const byPlace = new Map() // 사업장(사업자번호+주소) → { name, months: [{ym, seq}] }
   for (const r of rows) {
     const id = `${r.bzowrRgstNo}|${r.wkplRoadNmDtlAddr || ''}`
@@ -93,9 +153,12 @@ async function searchWorkplaces(name, key) {
       bizNo: r.bzowrRgstNo,
       address: r.wkplRoadNmDtlAddr || null,
       status: r.wkplJnngStcd === '1' ? '등록' : '탈퇴',
+      // 같은 이름의 부속 사업장(어린이집·금고)과 본사를 가르는 데 쓴다.
+      headcount: num(r.jnngpCnt),
       months: [],
     }
     if (r.dataCrtYm && r.seq != null) g.months.push({ ym: String(r.dataCrtYm), seq: r.seq })
+    g.headcount = Math.max(g.headcount ?? 0, num(r.jnngpCnt) ?? 0)
     byPlace.set(id, g)
   }
   for (const g of byPlace.values()) g.months.sort((a, b) => b.ym.localeCompare(a.ym))
@@ -122,7 +185,11 @@ export async function handleNps(req, key) {
     if (op === 'search') {
       if (!name) return json({ error: 'name 파라미터가 필요합니다.' }, 400, cors)
       const places = await searchWorkplaces(name, key)
-      return json({ total: places.length, places: places.map(({ months, ...rest }) => ({ ...rest, monthCount: months.length })) }, 200, cors)
+      return json(
+        { total: places.length, places: places.map(({ months, ...rest }) => ({ ...rest, monthCount: months.length })) },
+        200,
+        cors
+      )
     }
 
     if (op === 'timeline') {
@@ -136,10 +203,12 @@ export async function handleNps(req, key) {
       const byBizNo = bizNo6 && places.find((p) => String(p.bizNo || '').startsWith(bizNo6))
 
       // 사업자번호로 특정되면 그게 확실하다. 아니면 상호가 맞는 것만 받아들인다.
+      // 점수가 같으면 사람이 많은 쪽이 본사다. 월수로 고르면 "삼성SDS아이누리어린이집"
+      // (18명) 같은 부속 사업장이 본사를 밀어낸다.
       const named = places
         .map((p) => ({ p, score: nameScore(p.name, name) }))
         .filter((x) => x.score > 0)
-        .sort((a, b) => b.score - a.score || b.p.months.length - a.p.months.length)
+        .sort((a, b) => b.score - a.score || (b.p.headcount ?? 0) - (a.p.headcount ?? 0) || b.p.months.length - a.p.months.length)
       const place = byBizNo || named[0]?.p
 
       // 이름이 맞는 곳이 없으면 아무거나 고르지 않는다. 무엇이 걸렸는지는 알려 준다.

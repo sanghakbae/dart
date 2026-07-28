@@ -207,11 +207,12 @@ main { padding-bottom: 64px; }
   gap: 3px;
   min-width: 0;
 }
-/* 증감 방향을 배경에도 얹는다. ▲▼ 기호·부호와 겹치는 보조 신호라 색이 안 보여도
-   뜻은 그대로 읽힌다. surface-1 에 섞어 두 테마 모두에서 글자 대비를 지킨다. */
+/* 좋고 나쁨을 배경에도 얹는다. ▲▼ 기호·부호와 겹치는 보조 신호라 색이 안 보여도
+   뜻은 그대로 읽힌다. surface-1 에 섞어 두 테마 모두에서 글자 대비를 지킨다.
+   좋아진 쪽은 파랑을 쓴다 — 초록은 '증감 글자색' 이 이미 쓰고 있어 겹친다. */
 .tile-up {
-  background: linear-gradient(158deg, color-mix(in srgb, var(--good-text) 14%, var(--surface-1)), var(--surface-1) 68%);
-  border-color: color-mix(in srgb, var(--good-text) 26%, var(--border));
+  background: linear-gradient(158deg, color-mix(in srgb, var(--series-1) 15%, var(--surface-1)), var(--surface-1) 68%);
+  border-color: color-mix(in srgb, var(--series-1) 30%, var(--border));
 }
 .tile-down {
   background: linear-gradient(158deg, color-mix(in srgb, var(--critical) 14%, var(--surface-1)), var(--surface-1) 68%);

@@ -42,17 +42,21 @@ export function Badge({ tone = 'muted', children, dot }) {
 }
 
 /** 스탯 타일. 큰 숫자는 축약, 전체 자릿수는 title 과 표에서 확인 가능하게 둔다. */
-export function Tile({ label, value, unit, suffix, delta, deltaLabel, hint, tone, worseWhenUp }) {
+export function Tile({ label, value, unit, suffix, delta, deltaLabel, hint, tone, worseWhenUp, alwaysBad }) {
   const dir = delta == null ? 'flat' : delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat'
 
-  // 바탕색과 증감색이 서로 다른 것을 말하게 나눈다. 한때 바탕색이 '적자' 와
-  // '전년 대비 감소' 를 겸해, 현금이 멀쩡히 양수인데 줄었다는 이유로 빨갛게 떴다.
-  //   바탕색 = 지금 값이 나쁜가 (음수면 빨강, 아니면 칠하지 않는다)
-  //   증감색 = 그 변화가 좋은가 (부채처럼 늘수록 나쁜 항목은 뒤집는다)
-  // 화살표는 둘과 무관하게 실제 방향(▲▼)만 그대로 말한다.
+  // 바탕색 규칙 — 좋아졌으면 파랑, 나빠졌으면 빨강. 단 상태가 나쁜 항목은
+  // 전년보다 좋아졌더라도 빨강이다(적자가 줄어든 것도 여전히 적자다).
+  //
+  //   빨강 = 적자(음수) · 부채총계, 또는 전년보다 나빠진 것
+  //   파랑 = 전년보다 좋아진 것
+  //   무색 = 변화가 없거나 견줄 전년이 없는 것
+  //
+  // '좋아짐/나빠짐' 은 항목마다 방향이 다르다 — 부채가 늘면 나빠진 것이므로
+  // worseWhenUp 으로 뒤집는다. 화살표(▲▼)는 색과 무관하게 실제 방향만 말한다.
   const negative = typeof value === 'number' && value < 0
-  const shade = negative ? 'down' : 'flat'
   const deltaTone = worseWhenUp ? (dir === 'up' ? 'down' : dir === 'down' ? 'up' : 'flat') : dir
+  const shade = negative || alwaysBad ? 'down' : deltaTone
   return (
     <div
       className={`tile${shade === 'flat' ? '' : ` tile-${shade}`}`}
