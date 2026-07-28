@@ -273,14 +273,13 @@ function applyUnit(block, periods) {
 function resolveBasis(blocks, meta) {
   const scored = blocks.filter((b) => b.matchCount > 0)
   if (!scored.length) return meta.basis || '별도'
-  let c = 0
-  let s = 0
-  for (const b of scored) {
-    if (b.basis === '연결') c += b.matchCount
-    else s += b.matchCount
-  }
-  if (c === s) return meta.basis || '별도'
-  return c > s ? '연결' : '별도'
+
+  // 사업보고서에는 연결과 별도가 나란히 실린다. 계정 수로 겨루면 해마다 뒤집혔다
+  // (SK하이닉스가 2023년 연결, 2025년 별도로 갈렸다 — 같은 서식인데).
+  // 연결재무제표를 작성하는 회사는 그쪽이 주재무제표이므로, 연결 본표가 제대로
+  // 잡혔으면 연결로 본다. 별도만 있는 보고서는 그대로 별도다.
+  if (scored.some((b) => b.basis === '연결')) return '연결'
+  return '별도'
 }
 
 /** 같은 종류의 블록이 여러 개면 계정 매칭이 가장 많은 것을 대표로 쓴다. */

@@ -121,8 +121,34 @@ const VERDICTS = [
   },
 ]
 
+/**
+ * 사업보고서의 감사의견 요약 표.
+ *
+ * 상장사 사업보고서에는 감사보고서 전문이 없다(첨부로 따로 붙는다). 대신
+ * 「V. 회계감사인의 감사의견 등」에 표로 실린다.
+ *
+ *   사업연도  구분          감사인        감사의견
+ *   제78기(당기) 감사보고서   삼정회계법인   적정의견
+ *                연결감사보고서 삼정회계법인   적정의견
+ *   제77기(전기) …
+ *
+ * 감사의견 절을 못 찾으면 본문 앞 12,000자를 훑었는데, 사업보고서는 그 앞이
+ * 통째로 목차라 아무것도 안 걸려 SK하이닉스가 '판정 불가' 로 떴다.
+ * 당기 행만 봐야 한다 — 전기까지 훑으면 옛 의견을 물어 온다.
+ */
+function opinionFromSummary(fullText) {
+  // 제목("회계감사인의 감사의견 등")은 목차에도 똑같이 있어 그걸로 찾으면
+  // 목차를 잘라 오게 된다. 표의 머리글로 앵커를 잡는다.
+  const head = /사업연도\s*구분\s*감사인\s*감사의견/.exec(fullText)
+  if (!head) return null
+  // 당기 행부터 다음 사업연도 행(제77기…) 전까지.
+  const zone = fullText.slice(head.index, head.index + 4000)
+  const cur = /제\s*\d+\s*기\s*\(\s*당\s*기\s*\)([\s\S]*?)(?=제\s*\d+\s*기\s*\(\s*전)/.exec(zone)
+  return cur ? cur[1] : null
+}
+
 function classifyOpinion(opinionText, fullText) {
-  const scope = opinionText || fullText.slice(0, 12000)
+  const scope = opinionText || opinionFromSummary(fullText) || fullText.slice(0, 12000)
   for (const v of VERDICTS) {
     if (v.re.test(scope)) return { type: v.type, label: v.label, tone: v.tone }
   }
