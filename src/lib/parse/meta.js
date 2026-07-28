@@ -3,8 +3,11 @@
 import { extractYears, extractTermNo, detectPeriodType } from './numbers.js'
 import { SUBSIDIARY_PHRASE } from '../company.js'
 
+// 상호는 한 낱말이다. [^\n]{0,18} 로 앞을 열어 두면 공백·숫자까지 삼켜
+// SK하이닉스 감사인이 "제품 2026-01-01 삼정회계법인" 으로 잡혔다
+// (앞쪽 '제' 에서 먼저 매칭돼 뒤의 '삼정회계법인' 까지 통째로 물었다).
 const AUDIT_FIRM_RE =
-  /((?:삼일|삼정|한영|안진|대주|우리|신한|한울|정진세림|이촌|다산|성현|서현|현대|au|EY|KPMG|PwC|Deloitte)[^\n]{0,20}?회계법인|[가-힣A-Za-z][^\n]{0,18}?회계법인|[^\n]{0,18}?감사반)/
+  /([가-힣A-Za-z]{2,10}회계법인|회계법인\s{0,2}[가-힣A-Za-z]{2,10}|[가-힣A-Za-z]{2,12}감사반)/
 
 export function parseMeta(doc) {
   const text = doc.fullText

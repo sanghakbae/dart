@@ -95,3 +95,21 @@ test('별도만 있으면 별도다', () => {
 `)
   assert.equal(parseStatements(doc, { fiscalYear: 2025 }).basis, '별도')
 })
+
+// 상호는 한 낱말이다. 앞을 [^\n]{0,18} 로 열어 두었더니 공백·숫자까지 삼켜
+// SK하이닉스 감사인이 "제품 2026-01-01 삼정회계법인" 으로 잡혔다.
+test('감사인 — 앞 단어를 끌고 오지 않는다', async () => {
+  const { parseMeta } = await import('../src/lib/parse/meta.js')
+  const doc = docOf(
+    '사업보고서\n제 78 기\n제품 2026-01-01 삼정회계법인 적정의견\n'
+  )
+  assert.equal(parseMeta(doc).auditor, '삼정회계법인')
+})
+
+test('감사인 — 여러 서식을 읽는다', async () => {
+  const { parseMeta } = await import('../src/lib/parse/meta.js')
+  const of = (line) => parseMeta(docOf(`감사보고서\n${line}\n`)).auditor
+  assert.equal(of('한영회계법인'), '한영회계법인')
+  assert.equal(of('회계법인 마일스톤'), '회계법인 마일스톤')
+  assert.equal(of('대주회계법인 대표이사 홍길동'), '대주회계법인')
+})

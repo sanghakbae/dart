@@ -45,14 +45,14 @@ export function Badge({ tone = 'muted', children, dot }) {
 export function Tile({ label, value, unit, suffix, delta, deltaLabel, hint, tone, worseWhenUp }) {
   const dir = delta == null ? 'flat' : delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat'
 
-  // 카드 바탕색은 '값이 좋은가' 를 말한다. 증감 방향만 보면 두 가지가 뒤집힌다.
-  //  - 적자인데 전기보다 덜 나쁘면 초록 (당기순이익 −45.5억이 초록이었다)
-  //  - 부채가 늘면 초록 (부채총계 +38% 가 좋은 일처럼 보였다)
-  // 값이 음수면 무조건 빨강, 늘수록 나쁜 항목은 방향을 뒤집는다.
-  // 증감 화살표(아래)는 색과 무관하게 방향만 그대로 말한다.
+  // 바탕색과 증감색이 서로 다른 것을 말하게 나눈다. 한때 바탕색이 '적자' 와
+  // '전년 대비 감소' 를 겸해, 현금이 멀쩡히 양수인데 줄었다는 이유로 빨갛게 떴다.
+  //   바탕색 = 지금 값이 나쁜가 (음수면 빨강, 아니면 칠하지 않는다)
+  //   증감색 = 그 변화가 좋은가 (부채처럼 늘수록 나쁜 항목은 뒤집는다)
+  // 화살표는 둘과 무관하게 실제 방향(▲▼)만 그대로 말한다.
   const negative = typeof value === 'number' && value < 0
-  const flipped = worseWhenUp ? (dir === 'up' ? 'down' : dir === 'down' ? 'up' : 'flat') : dir
-  const shade = negative ? 'down' : flipped
+  const shade = negative ? 'down' : 'flat'
+  const deltaTone = worseWhenUp ? (dir === 'up' ? 'down' : dir === 'down' ? 'up' : 'flat') : dir
   return (
     <div
       className={`tile${shade === 'flat' ? '' : ` tile-${shade}`}`}
@@ -69,7 +69,7 @@ export function Tile({ label, value, unit, suffix, delta, deltaLabel, hint, tone
       </div>
       {unit && <div className="u">{unit}</div>}
       {delta != null && (
-        <div className={`d ${dir}`}>
+        <div className={`d ${deltaTone}`}>
           {dir === 'up' ? '▲' : dir === 'down' ? '▼' : '—'} {signedPct(delta)}
           {deltaLabel ? ` ${deltaLabel}` : ''}
         </div>
