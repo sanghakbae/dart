@@ -353,7 +353,7 @@ main { padding-bottom: 64px; }
      그리드로 열을 고정해 행끼리 세로로 맞춘다. */
   width: 100%;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 215px 16px;
+  grid-template-columns: minmax(0, 1fr) 16px;
   align-items: center;
   gap: 14px;
   padding: 15px clamp(12px, 2vw, 20px);
@@ -364,23 +364,18 @@ main { padding-bottom: 64px; }
 }
 .corow:hover { background: var(--surface-2); }
 .corow.active { background: color-mix(in srgb, var(--series-1) 8%, var(--surface-1)); box-shadow: inset 3px 0 0 var(--series-1); }
-.co-main { display: grid; gap: 3px; min-width: 0; }
+/* 회사명과 메타를 한 줄에 흘린다(좁아지면 접힌다). 두 줄로 쌓으면 행이 두 배로
+   높아져, 회사가 늘수록 목록을 훑기 어려워진다. */
+.co-main { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; min-width: 0; }
 .co-name { font-size: 20px; font-weight: 650; letter-spacing: -0.01em; overflow-wrap: anywhere; }
 .co-meta {
-  display: flex; gap: 6px; flex-wrap: wrap;
+  display: flex; gap: 6px; flex-wrap: wrap; align-items: baseline;
   /* text-3 은 밝은 테마에서 대비가 3.59:1 로 AA(4.5:1)에 못 미친다.
      회사 목록은 가장 자주 보는 화면이라 보조 텍스트도 text-2(7.94:1)로 올린다. */
   font-size: 15px; color: var(--text-2);
   font-variant-numeric: tabular-nums;
 }
 .co-go { color: var(--text-3); font-size: 18px; text-align: right; }
-
-.co-trend { display: flex; align-items: center; gap: 9px; justify-content: flex-start; min-width: 0; }
-.co-trend-txt { display: grid; gap: 0; font-size: 13.5px; min-width: 0; }
-.co-trend-v { font-size: 17px; font-weight: 650; font-variant-numeric: tabular-nums; }
-.co-trend-txt .up, .co-trend-txt .down { font-weight: 600; font-variant-numeric: tabular-nums; }
-.co-trend-span { color: var(--text-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.co-trend-empty { font-size: 14px; color: var(--text-2); }
 
 @media (max-width: 720px) {
   /* 좁은 화면에서는 열을 포기하고 위아래로 쌓는다 */

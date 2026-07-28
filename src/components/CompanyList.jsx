@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Badge, Empty, Card } from './ui'
-import { growth } from '../lib/analyze/ratios'
-import { dateTimeText, abbrev, signedPct } from '../lib/format'
+import { dateTimeText } from '../lib/format'
 
 /**
  * 회사 리스트. 항목은 회사 누적 문서(companies/{key})에서 만든 뷰다.
@@ -10,26 +9,13 @@ import { dateTimeText, abbrev, signedPct } from '../lib/format'
 export default function CompanyList({ companies, activeKey, onSelect, onDelete, deletingKey }) {
   const [q, setQ] = useState('')
 
-  const rows = useMemo(
-    () =>
-      companies.map((c) => {
-        const first = c.trend[0]
-        const last = c.trend[c.trend.length - 1]
-        return {
-          ...c,
-          trendGrowth: c.trend.length > 1 ? growth(last.value, first.value) : null,
-          trendLatest: last?.value ?? null,
-          trendSpan: c.trend.length > 1 ? `${first.label}→${last.label}` : null,
-        }
-      }),
-    [companies]
-  )
-
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase()
-    if (!term) return rows
-    return rows.filter((c) => `${c.name} ${c.auditor || ''} ${c.years.join(' ')}`.toLowerCase().includes(term))
-  }, [rows, q])
+    if (!term) return companies
+    return companies.filter((c) =>
+      `${c.name} ${c.auditor || ''} ${c.years.join(' ')}`.toLowerCase().includes(term)
+    )
+  }, [companies, q])
 
   if (!companies.length) {
     return (
@@ -72,6 +58,8 @@ export default function CompanyList({ companies, activeKey, onSelect, onDelete, 
               onClick={() => onSelect(c)}
               aria-current={c.key === activeKey ? 'true' : undefined}
             >
+              {/* 회사명과 메타를 한 줄에 흘린다. 두 줄로 쌓으면 행이 두 배로 높아져
+                  회사가 늘수록 목록을 훑기 어렵다. 좁아지면 자연히 접힌다. */}
               <span className="co-main">
                 <span className="co-name">{c.name}</span>
                 <span className="co-meta">
@@ -106,18 +94,6 @@ export default function CompanyList({ companies, activeKey, onSelect, onDelete, 
                   )}
                 </span>
               </span>
-
-              {c.trend.length > 1 ? (
-                <span className="co-trend">
-                  <span className="co-trend-txt">
-                    <span className="co-trend-v">{abbrev(c.trendLatest)}</span>
-                    <span className={c.trendGrowth >= 0 ? 'up' : 'down'}>{signedPct(c.trendGrowth)}</span>
-                    <span className="co-trend-span">{c.trendSpan} 매출</span>
-                  </span>
-                </span>
-              ) : (
-                <span className="co-trend co-trend-empty">누적 연도 {c.years.length}개</span>
-              )}
 
               <span className="co-go" aria-hidden="true">›</span>
             </button>
