@@ -86,10 +86,11 @@ export default function PatentTab({ report }) {
       </Card>
 
       {stats.years.length > 1 && (
-        <Card title="연도별 출원" sub={`${stats.years[stats.years.length - 1][0]}~${stats.years[0][0]}년`}>
-          {/* 표로 늘어놓으면 아홉 줄을 눈으로 훑어야 한다. 막대 하나로 흐름이 바로 보인다. */}
+        <Card title="연도별 출원" sub={`${stats.years[0][0]}~${stats.years[stats.years.length - 1][0]}년`}>
+          {/* 표로 늘어놓으면 아홉 줄을 눈으로 훑어야 한다. 막대 하나로 흐름이 바로 보인다.
+              최근 연도를 맨 위에 둔다 — 특허 목록도 최근순이라 눈이 같은 방향으로 움직인다. */}
           <ul className="yearbars">
-            {[...stats.years].reverse().map(([y, n]) => (
+            {stats.years.map(([y, n]) => (
               <li key={y}>
                 <span className="yb-y">{y}</span>
                 <span className="yb-track">
