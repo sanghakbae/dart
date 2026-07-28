@@ -8,6 +8,7 @@ import { buildTimeline, splitByPeriodType } from './lib/analyze/series'
 import { useAuth, signOut, authAvailable } from './lib/auth'
 import { touchUser, bumpUpload } from './lib/usage'
 import { prefetchExternals } from './lib/externals'
+import { readRoute, writeRoute } from './lib/route'
 import Header from './components/Header'
 import SignIn from './components/SignIn'
 import AdminPage from './components/AdminPage'
@@ -45,26 +46,9 @@ const TABS = [
   { key: 'raw', label: '원문' },
 ]
 
-/**
- * 보고 있던 화면을 주소에 담아 둔다 — `#/co/{회사}/{탭}/{보고서}`
- *
- * 새로고침하면 회사 목록으로 튕겨 처음부터 다시 찾아 들어가야 했다.
- * 주소에 넣어 두면 새로고침해도 그 자리에 남고, 링크로 공유·북마크도 된다.
- * 탭을 옮길 때마다 히스토리를 쌓지는 않는다(replaceState).
- */
-function readRoute() {
-  const m = /^#\/co\/([^/]+)(?:\/([^/]+))?(?:\/(.+))?$/.exec(window.location.hash || '')
-  if (!m) return { companyKey: null, tab: 'summary', reportId: null }
-  const tab = m[2] ? decodeURIComponent(m[2]) : 'summary'
-  return {
-    companyKey: decodeURIComponent(m[1]),
-    // 주소를 손으로 고쳤거나 탭 이름이 바뀐 뒤일 수 있다.
-    tab: TABS.some((t) => t.key === tab) ? tab : 'summary',
-    reportId: m[3] ? decodeURIComponent(m[3]) : null,
-  }
-}
-
-const ROUTE0 = readRoute()
+// 새로고침해도 보던 화면에 머문다(lib/route.js). 첫 렌더 전에 한 번 읽어 둔다.
+const TAB_KEYS = TABS.map((t) => t.key)
+const ROUTE0 = readRoute(typeof window === 'undefined' ? '' : window.location.hash, TAB_KEYS)
 
 export default function App() {
   const [companies, setCompanies] = useState([])
@@ -73,7 +57,7 @@ export default function App() {
   const [reports, setReports] = useState([]) // 선택한 회사의 보고서들
   const [loadingReports, setLoadingReports] = useState(false)
   const [activeId, setActiveId] = useState(ROUTE0.reportId)
-  const [tab, setTab] = useState(ROUTE0.tab)
+  const [tab, setTab] = useState(ROUTE0.tab || 'summary')
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState(0)
   const [phase, setPhase] = useState('')
@@ -148,24 +132,25 @@ export default function App() {
   }, [admin])
 
   // 보고 있는 화면을 주소에 새겨 둔다. 새로고침하면 여기서 다시 시작한다.
+  // 탭을 옮길 때마다 히스토리를 쌓지는 않는다(replaceState).
   useEffect(() => {
-    const next = companyKey
-      ? `#/co/${encodeURIComponent(companyKey)}/${tab}${activeId ? `/${encodeURIComponent(activeId)}` : ''}`
-      : '#/'
-    if (window.location.hash !== next) {
-      window.history.replaceState(null, '', next)
-    }
+    const next = writeRoute({ companyKey, tab, reportId: activeId })
+    if (window.location.hash !== next) window.history.replaceState(null, '', next)
   }, [companyKey, tab, activeId])
 
   // 주소에 있던 회사가 지워졌거나 볼 권한이 없으면 목록으로 돌린다.
-  // (그대로 두면 "보고서를 불러오지 못했습니다" 만 뜬 채 갇힌다)
+  // (그대로 두면 "보고서를 찾지 못했습니다" 만 뜬 채 갇힌다)
+  //
+  // 로그인 전에는 목록이 비어 있는 게 정상이라 판단하지 않는다 — 여기서 지워 버리면
+  // 로그인하고 돌아왔을 때 보던 회사가 아니라 목록으로 떨어진다.
   useEffect(() => {
-    if (loadingList || !companyKey || !companies.length) return
+    if (!authReady || (authAvailable && !user)) return
+    if (loadingList || !companyKey) return
     if (!companies.some((c) => c.key === companyKey)) {
       setCompanyKey(null)
       setActiveId(null)
     }
-  }, [loadingList, companies, companyKey])
+  }, [authReady, user, loadingList, companies, companyKey])
 
   const company = useMemo(() => companies.find((c) => c.key === companyKey) || null, [companies, companyKey])
 

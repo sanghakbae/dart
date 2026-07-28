@@ -77,6 +77,7 @@ export default function SummaryTab({ report, timeline }) {
                 unit={t.value != null ? `${full(t.value)}원` : undefined}
                 delta={t.delta}
                 deltaLabel={`vs ${priLabel}`}
+                worseWhenUp={t.worseWhenUp}
               />
             ))}
           </div>

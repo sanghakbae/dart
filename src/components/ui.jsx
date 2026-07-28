@@ -42,11 +42,20 @@ export function Badge({ tone = 'muted', children, dot }) {
 }
 
 /** 스탯 타일. 큰 숫자는 축약, 전체 자릿수는 title 과 표에서 확인 가능하게 둔다. */
-export function Tile({ label, value, unit, suffix, delta, deltaLabel, hint, tone }) {
+export function Tile({ label, value, unit, suffix, delta, deltaLabel, hint, tone, worseWhenUp }) {
   const dir = delta == null ? 'flat' : delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat'
+
+  // 카드 바탕색은 '값이 좋은가' 를 말한다. 증감 방향만 보면 두 가지가 뒤집힌다.
+  //  - 적자인데 전기보다 덜 나쁘면 초록 (당기순이익 −45.5억이 초록이었다)
+  //  - 부채가 늘면 초록 (부채총계 +38% 가 좋은 일처럼 보였다)
+  // 값이 음수면 무조건 빨강, 늘수록 나쁜 항목은 방향을 뒤집는다.
+  // 증감 화살표(아래)는 색과 무관하게 방향만 그대로 말한다.
+  const negative = typeof value === 'number' && value < 0
+  const flipped = worseWhenUp ? (dir === 'up' ? 'down' : dir === 'down' ? 'up' : 'flat') : dir
+  const shade = negative ? 'down' : flipped
   return (
     <div
-      className={`tile${dir === 'flat' ? '' : ` tile-${dir}`}`}
+      className={`tile${shade === 'flat' ? '' : ` tile-${shade}`}`}
       title={hint || (typeof value === 'number' ? full(value) : undefined)}
     >
       <div className="k">

@@ -2,12 +2,14 @@
 
 import { growth, GROWTH_KEYS } from './ratios.js'
 
+// worse: 늘어나는 게 나쁜 항목. 카드 색이 '늘었으니 초록' 으로 가지 않게 한다
+// (부채총계가 38% 늘었는데 초록으로 떠서 좋은 일처럼 보였다).
 export const HEADLINE = [
   { key: 'revenue', label: '매출액' },
   { key: 'operatingProfit', label: '영업이익' },
   { key: 'netIncome', label: '당기순이익' },
   { key: 'totalAssets', label: '자산총계' },
-  { key: 'totalLiabilities', label: '부채총계' },
+  { key: 'totalLiabilities', label: '부채총계', worseWhenUp: true },
   { key: 'totalEquity', label: '자본총계' },
   { key: 'cfOperating', label: '영업활동현금흐름' },
   { key: 'cash', label: '현금및현금성자산' },
@@ -22,6 +24,7 @@ export function headlineTiles(values) {
       value: row?.current ?? null,
       prior: row?.prior ?? null,
       delta: growth(row?.current ?? null, row?.prior ?? null),
+      worseWhenUp: Boolean(h.worseWhenUp),
       derived: Boolean(row?.derived),
     }
   }).filter((t) => t.value != null || t.prior != null)
