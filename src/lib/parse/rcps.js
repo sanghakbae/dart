@@ -80,7 +80,47 @@ export function parseRcps(doc) {
     // (무하유는 부채요소 66.6억 + 파생상품 101.8억 = 168.4억이고 자본총계가 108.5억이다).
     totalLiability: sumNullable([liability?.carrying, derivative?.current]),
     ...summarize(detailed, liability),
+    ...readSplitAdjustment(zone, totalShares),
   }
+}
+
+/**
+ * 주당발행가액이 '환산가' 인지 밝힌다.
+ *
+ * 무상증자·액면분할을 하면 회사는 주석의 발행가를 분할 후 기준으로 고쳐 적는다.
+ * 무하유 2025년 주석의 17,500원이 그것이고, 투자자가 2023년에 실제로 낸 돈은
+ * 주당 350만원이다. 그런데 화면에는 "주당발행가액 17,500원" 으로만 나와,
+ * 투자자가 그 값에 샀다고 읽히는 문제가 있었다.
+ *
+ * 각주에 "N주에서 M주로 증가" 가 적히므로 배수를 되짚어 당시 단가를 복원한다.
+ *   3,429주 → 68,580주 → 685,800주  = 200배,  17,500 × 200 = 350만원
+ */
+function readSplitAdjustment(zone, totalShares) {
+  // 키가 늘 같아야 한다. 빠뜨리면 undefined 가 섞여 Firestore 저장에서 사라진다.
+  const none = { splitAdjusted: false, originalShares: null, splitRatio: null }
+
+  const notes = zone
+    .filter((cells) => /무상증자|액면\s*분할/.test(cells.join(' ')))
+    .map((cells) => cells.join(' '))
+    .join(' ')
+  if (!notes) return none
+
+  // 발행가가 조정된 값이라고 각주가 밝히는 경우에만 '환산가' 로 본다.
+  const adjusted = /조정된[^.]{0,20}주당발행가액|주당발행가액입니다/.test(notes)
+
+  // "3,429주에서 68,580주로 증가" 들을 모아 최초 주식수를 찾는다.
+  const steps = [...notes.matchAll(/([\d,]+)\s*주에서\s*([\d,]+)\s*주로/g)].map((m) => [
+    parseAmount(m[1]),
+    parseAmount(m[2]),
+  ])
+  const froms = steps.map(([a]) => a).filter((v) => v != null)
+  const originalShares = froms.length ? Math.min(...froms) : null
+  const ratio =
+    originalShares && totalShares && originalShares > 0 ? Math.round(totalShares / originalShares) : null
+
+  const splitRatio = ratio && ratio > 1 ? ratio : null
+  if (!adjusted && !splitRatio) return none
+  return { splitAdjusted: true, originalShares: originalShares ?? null, splitRatio }
 }
 
 /**
@@ -296,6 +336,8 @@ function summarize(series, liability) {
     putStartDate: putDates[0] || null,
     statedRate: latest.statedRate ?? null,
     impliedRate: impliedRate != null ? Math.round(impliedRate * 100) / 100 : null,
+    // 발행 당시 실제 단가. 주석의 발행가가 분할 후로 환산돼 있으면 화면에 둘 다 낸다.
+    // (readSplitAdjustment 가 배수를 채우면 parseRcps 가 여기에 얹는다)
     // 배당 0% 라도 상환할증금이 수익률을 대신하는 구조가 흔하다. 둘을 같이 봐야 한다.
     dividend: latest.dividend || null,
     refixing: latest.refixing || null,

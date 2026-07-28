@@ -38,7 +38,25 @@ export default function RcpsCard({ rcps, shares }) {
         <div className="grid grid-tiles">
           <Tile label="조달금액" value={rcps.raised} unit={rcps.raised ? `${full(rcps.raised)}원` : undefined} />
           {rcps.issuePrice != null && (
-            <Tile label="주당발행가액" value={`${full(rcps.issuePrice)}원`} unit={rcps.shares ? `${full(rcps.shares)}주` : undefined} />
+            <Tile
+              label={rcps.splitRatio ? '주당발행가액 (환산)' : '주당발행가액'}
+              value={`${full(rcps.issuePrice)}원`}
+              unit={rcps.shares ? `${full(rcps.shares)}주` : undefined}
+              hint={
+                rcps.splitRatio
+                  ? `무상증자·액면분할로 주식이 ${rcps.splitRatio}배가 된 뒤 기준으로 환산한 값입니다. 투자자가 실제로 낸 단가는 아닙니다.`
+                  : undefined
+              }
+            />
+          )}
+          {/* 환산가만 내놓으면 투자자가 그 값에 샀다고 읽힌다. 실제로 낸 단가를 함께 낸다. */}
+          {rcps.splitRatio && rcps.issuePrice != null && (
+            <Tile
+              label="발행 당시 단가"
+              value={`${full(rcps.issuePrice * rcps.splitRatio)}원`}
+              unit={rcps.originalShares ? `${full(rcps.originalShares)}주 · 분할 전` : '분할 전'}
+              tone="info"
+            />
           )}
           {postMoney != null && !rcps.mixedPrices && (
             <Tile
@@ -93,6 +111,19 @@ export default function RcpsCard({ rcps, shares }) {
               <strong>{abbrev(rcps.pnl.derivativeLoss)}</strong>을 제외하면{' '}
               <strong>{abbrev(rcps.pnl.pretaxExDerivative)}</strong>입니다.
               현금이 오간 손실이 아니고, 전환되면 사라집니다.
+            </span>
+          </Callout>
+        )}
+
+        {rcps.splitRatio && (
+          <Callout>
+            <span>
+              이 라운드 뒤 <strong>무상증자·액면분할로 주식이 {rcps.splitRatio}배</strong>가 됐습니다. 주석의
+              발행가 {full(rcps.issuePrice)}원은 그 기준으로 환산한 값이고, 투자자가{' '}
+              {rcps.issueDate || '발행 당시'}에 실제로 낸 단가는{' '}
+              <strong>주당 {full(rcps.issuePrice * rcps.splitRatio)}원</strong>
+              {rcps.originalShares && <> ({full(rcps.originalShares)}주)</>}입니다. 총 투자금과 지분율은 어느
+              쪽으로 계산해도 같습니다.
             </span>
           </Callout>
         )}

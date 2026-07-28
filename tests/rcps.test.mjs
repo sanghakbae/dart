@@ -464,3 +464,30 @@ test('주식수 — 총액 자본금 표기도 이중 계산하지 않는다', a
   assert.equal(s.totalShares, 23_429)
   assert.equal(s.commonShares, 20_000)
 })
+
+// 주석의 발행가는 분할 후로 환산돼 있다. 그것만 내놓으면 투자자가 그 값에
+// 샀다고 읽힌다 — 실제로는 무하유 투자자가 주당 350만원을 냈다.
+test('RCPS — 환산가임을 밝히고 분할 배수를 되짚는다', () => {
+  const SPLIT_NOTE = `
+14. 상환전환우선주
+(2) 세부내역은 다음과 같습니다.
+구 분\t제1종 상환전환우선주
+주당발행가액(*1)\t17,500원
+발행주식수(*2)\t685,800주
+발행일\t2023-10-21
+(*1) 무상증자, 액면분할로 인해 조정된 주식 수를 고려한 주당발행가액입니다.(*2) 회사는 이사회 결의에 따라 상환전환우선주 주식 수 65,151주를 무상증자 하였으며, 이에 따라 주식수가 3,429주에서 68,580주로 증가하였습니다. 또한, 주주총회 결의에 따라 1주당 10주로 액면 분할하였으며, 이에 따라 주식수가 68,580주에서 685,800주로 증가하였습니다.
+15. 퇴직급여
+`
+  const r = parseRcps(docOf(SPLIT_NOTE))
+  assert.equal(r.splitAdjusted, true)
+  assert.equal(r.originalShares, 3_429)
+  assert.equal(r.splitRatio, 200) // 685,800 ÷ 3,429
+  // 환산가 × 배수 = 발행 당시 실제 단가
+  assert.equal(r.issuePrice * r.splitRatio, 3_500_000)
+})
+
+test('RCPS — 분할이 없었으면 환산 표기를 붙이지 않는다', () => {
+  const r = parseRcps(docOf(RCPS_NOTE.replace(/\(\*1\) 무상증자[^\n]*/g, '')))
+  assert.equal(r.splitRatio, null)
+  assert.equal(r.splitAdjusted, false)
+})
