@@ -11,7 +11,9 @@
 
 const KIPRIS = 'http://plus.kipris.or.kr/openapi/rest/patUtiModInfoSearchSevice'
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' }
-const TIMEOUT = 15_000
+// KIPRIS 는 한 번 부르는 데 10초를 넘기는 일이 잦다(상태 점검도 12.7초 걸렸다).
+// 15초로 잡았더니 실제 조회가 전부 타임아웃으로 떨어졌다.
+const TIMEOUT = 30_000
 
 export function kiprisCors(origin) {
   return {

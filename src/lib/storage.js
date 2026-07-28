@@ -476,6 +476,17 @@ const reportDoc = (ck, rid) => doc(db, COL, ck, 'reports', rid)
 const contentCol = (ck, rid) => collection(db, COL, ck, 'reports', rid, 'content')
 
 async function saveToFirestore(report, ck, rid, onProgress) {
+  // 정정보고서는 원본과 reportId 가 같아 서로를 덮는다. 정정본은 원본 전체를
+  // 담고 있으므로(SK하이닉스 2020년: 원본 265만자 → 정정 267만자) 정정본이 이긴다.
+  //
+  // 이 검사가 회사 문서 갱신 뒤에 있었다. 그래서 정정본을 올린 뒤 원본을 올리면
+  // 보고서 본문은 지켜지는데 회사 문서의 연도별 수치만 원본으로 되돌아갔다.
+  // 아무것도 건드리기 전에 판단한다.
+  const prevRep = await getDoc(reportDoc(ck, rid))
+  if (prevRep.exists() && prevRep.data()?.meta?.isAmendment && !report.meta?.isAmendment) {
+    return { skipped: 'amendment-kept' }
+  }
+
   // 회사 문서는 읽고-병합-쓰기라 트랜잭션으로 처리한다.
   // (같은 연도를 '당기'로 보고한 값이 '전기' 비교치를 덮어써야 하므로 merge 만으론 부족하다)
   await runTransaction(db, async (txn) => {
@@ -483,13 +494,6 @@ async function saveToFirestore(report, ck, rid, onProgress) {
     const next = accumulateCompany(snap.exists() ? snap.data() : null, report, uploader())
     txn.set(companyDoc(ck), sanitize({ ...next, storage: 'firestore' }))
   })
-
-  // 정정보고서는 원본과 reportId 가 같아 서로를 덮는다. 정정본이 이겨야 하므로,
-  // 이미 정정본이 저장돼 있는데 원본을 올리면 본문까지 되돌아가지 않게 건너뛴다.
-  const prevRep = await getDoc(reportDoc(ck, rid))
-  if (prevRep.exists() && prevRep.data()?.meta?.isAmendment && !report.meta?.isAmendment) {
-    return { skipped: 'amendment-kept' }
-  }
 
   await setDoc(reportDoc(ck, rid), { ...toSummary(report), storedAt: Date.now(), storage: 'firestore' })
 

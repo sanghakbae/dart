@@ -54,6 +54,33 @@ async function call(op, params, key) {
   return Array.isArray(item) ? item : item ? [item] : []
 }
 
+/**
+ * 사업장명이 그 회사의 것인가.
+ *
+ * 공단 검색은 부분일치다. "SK하이닉스" 로 부르면 24곳이 걸리는데 전부
+ * "(주)정안디엔씨/상용/SK하이닉스 청주4캠퍼스 … 전기설비공사" 같은 하청업체
+ * 현장이고 본사는 없다. 그걸 최다 월수로 골라 대표로 삼는 바람에 남의 회사
+ * 고용 정보를 그 회사 것처럼 보여줬다.
+ *
+ * 이름이 앞에서부터 맞아야 그 회사다. 가운데 끼어 있으면 남의 현장 이름이다.
+ */
+function normName(s) {
+  return String(s || '')
+    .normalize('NFC')
+    .replace(/주식회사|유한회사|\(주\)|（주）|㈜/g, '')
+    .replace(/[^가-힣A-Za-z0-9]/g, '')
+    .toLowerCase()
+}
+
+function nameScore(wkplNm, query) {
+  const a = normName(wkplNm)
+  const b = normName(query)
+  if (!a || !b) return 0
+  if (a === b) return 3 // 상호가 그대로
+  if (a.startsWith(b)) return 2 // 지점·사업장 (무하유 → 무하유서울지점)
+  return 0 // 이름만 들어간 남의 현장
+}
+
 /** 사업장 검색 — 월별 행에서 최신 월을 대표로 삼고 월별 seq 는 따로 모아 둔다. */
 async function searchWorkplaces(name, key) {
   const rows = await call('getBassInfoSearchV2', { wkplNm: name, numOfRows: 100, pageNo: 1 }, key)
@@ -106,8 +133,29 @@ export async function handleNps(req, key) {
 
       // 사업자번호로 특정할 수 있으면 그걸 쓴다(동명 사업장이 흔하다).
       const bizNo6 = (url.searchParams.get('bizNo') || '').replace(/\D/g, '').slice(0, 6)
-      const place =
-        (bizNo6 && places.find((p) => String(p.bizNo || '').startsWith(bizNo6))) || places[0]
+      const byBizNo = bizNo6 && places.find((p) => String(p.bizNo || '').startsWith(bizNo6))
+
+      // 사업자번호로 특정되면 그게 확실하다. 아니면 상호가 맞는 것만 받아들인다.
+      const named = places
+        .map((p) => ({ p, score: nameScore(p.name, name) }))
+        .filter((x) => x.score > 0)
+        .sort((a, b) => b.score - a.score || b.p.months.length - a.p.months.length)
+      const place = byBizNo || named[0]?.p
+
+      // 이름이 맞는 곳이 없으면 아무거나 고르지 않는다. 무엇이 걸렸는지는 알려 준다.
+      if (!place) {
+        return json(
+          {
+            found: false,
+            name,
+            months: [],
+            reason: 'no-name-match',
+            candidates: places.slice(0, 8).map((p) => ({ name: p.name, monthCount: p.months.length })),
+          },
+          200,
+          cors
+        )
+      }
 
       const targets = place.months.slice(0, wanted)
       // 월마다 상세(인원·고지금액)와 기간별(입·퇴사)을 함께 부른다.

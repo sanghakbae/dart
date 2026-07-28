@@ -85,8 +85,18 @@ export default function EmploymentTab({ report, timeline }) {
           error={error || (!hasProxy ? '배포본에는 조회용 프록시 주소가 설정되지 않았습니다.' : null)}
         >
           {fetchedAt
-            ? '가입자 3인 이상 법인사업장만 공개됩니다. 사업장명이 감사보고서의 회사명과 다를 수 있습니다.'
+            ? data?.reason === 'no-name-match'
+              ? '이름이 들어간 사업장은 있지만 상호가 일치하지 않아 쓰지 않았습니다 — 대개 그 회사 현장에서 일하는 하청업체입니다. 아래가 걸린 사업장입니다.'
+              : '가입자 3인 이상 법인사업장만 공개됩니다. 사업장명이 감사보고서의 회사명과 다를 수 있습니다.'
             : '조회에 10초쯤 걸려 자동으로 받지 않습니다. 한 번 받아오면 DB 에 저장해 두고 씁니다.'}
+          {/* 왜 못 찾았는지 눈으로 확인할 수 있게 걸린 사업장을 보여준다. */}
+          {data?.candidates?.length > 0 && (
+            <ul className="tnote" style={{ marginTop: 10, textAlign: 'left', display: 'grid', gap: 3 }}>
+              {data.candidates.map((c) => (
+                <li key={c.name}>· {c.name} ({c.monthCount}개월)</li>
+              ))}
+            </ul>
+          )}
         </RemoteEmpty>
       </Card>
     )
