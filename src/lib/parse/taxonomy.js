@@ -115,21 +115,43 @@ export function normalizeLabel(s) {
 const COMPATIBLE = { IS: ['IS', 'CI'], CI: ['CI', 'IS'] }
 const fits = (stmt, hint) => !hint || stmt === hint || (COMPATIBLE[hint] || []).includes(stmt)
 
+/**
+ * 라벨 자체가 '손실' 이라고 말하는가.
+ *
+ * 재무제표는 적자를 두 가지로 적는다.
+ *   ① 「영업손실  4,118,907,794」   — 라벨이 손실, 숫자는 양수
+ *   ② 「영업이익 (4,118,907,794)」  — 라벨이 이익, 숫자는 음수
+ * ②는 parseAmount 가 괄호를 음수로 읽어 그대로 맞지만, ①은 양수라 그대로 쓰면
+ * 적자가 흑자로 뒤집힌다(블룸에이아이 영업손실 41.2억이 영업이익 41.2억으로 떴다).
+ *
+ * '(손실)' 처럼 괄호로 병기한 것은 서식일 뿐 손실 확정이 아니므로 제외한다.
+ */
+function saysLoss(norm) {
+  const bare = norm.replace(/\([^)]*\)/g, '')
+  return /손실|결손/.test(bare)
+}
+
+/**
+ * @returns {null|object} 계정 정의에 negate 를 얹어 돌려준다.
+ *   negate=true 면 라벨이 손실이므로 양수를 음수로 뒤집어야 한다.
+ */
 export function matchAccount(label, stmtHint) {
   const norm = normalizeLabel(label)
   if (!norm || norm.length > 40) return null
 
+  const found = (c) => (saysLoss(norm) ? { ...c, negate: true } : c)
+
   // 1) 현재 섹션(및 호환 섹션) 안에서 완전일치
   for (const c of FLAT) {
-    if (c.norm === norm && fits(c.stmt, stmtHint)) return c
+    if (c.norm === norm && fits(c.stmt, stmtHint)) return found(c)
   }
   // 2) 섹션 무관 완전일치
   for (const c of FLAT) {
-    if (c.norm === norm) return c
+    if (c.norm === norm) return found(c)
   }
   // 3) 접두 포함 매칭 — '영업이익(손실)' 같은 변형 흡수
   for (const c of FLAT) {
-    if (norm.length <= 24 && norm.startsWith(c.norm) && fits(c.stmt, stmtHint)) return c
+    if (norm.length <= 24 && norm.startsWith(c.norm) && fits(c.stmt, stmtHint)) return found(c)
   }
   return null
 }

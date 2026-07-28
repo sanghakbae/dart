@@ -136,9 +136,13 @@ function registerAccount(block, label, values) {
     rawLabel: label,
     level: acct.level,
     perShare: Boolean(acct.perShare),
-    values,
+    // 「영업손실 4,118,907,794」 처럼 라벨이 손실인데 숫자가 양수인 서식이 있다.
+    // 그대로 두면 적자가 흑자로 뒤집힌다. 이미 음수면 두 번 뒤집지 않는다.
+    values: acct.negate ? values.map(negateIfPositive) : values,
   }
 }
+
+const negateIfPositive = (v) => (typeof v === 'number' && v > 0 ? -v : v)
 
 const DASH_ONLY = /^[-–—－ㅡ]$/
 
