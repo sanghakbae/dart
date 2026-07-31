@@ -632,6 +632,9 @@ table.fin th.lbl, table.fin td.lbl {
   box-shadow: 1px 0 0 var(--grid);
 }
 table.fin thead th.lbl { z-index: 3; background: var(--surface-2); }
+/* 줄글 칸 — 오른쪽 정렬이면 문장이 끝에서 시작해 눈이 매 줄 되돌아간다 */
+table.fin td.txt-left { text-align: left; white-space: normal; font-variant-numeric: normal; }
+table.fin th.txt-left { text-align: left; }
 table.fin tbody tr:hover td { background: color-mix(in srgb, var(--series-1) 4%, var(--surface-1)); }
 table.fin tbody tr:hover td.lbl { background: color-mix(in srgb, var(--series-1) 6%, var(--surface-1)); }
 table.fin tr.lv0 td { font-weight: 660; }

@@ -84,6 +84,8 @@ export async function analyzeFile(file, onProgress) {
     sections: narrative.sections,
     periods: statements.periods,
     values: statements.values,
+    // 연결·별도를 함께 실은 보고서는 두 벌 다 담는다(추이에서 기준별로 골라 쓴다).
+    valuesByBasis: statements.valuesByBasis || {},
     blocks: statements.blocks.map(serializeBlock),
     shares,
     rcps,
@@ -135,6 +137,9 @@ function applySubmission(ctx, sub) {
   }
 
   statements.values = sub.values
+  statements.valuesByBasis = Object.fromEntries(
+    Object.entries(sub.both).filter(([, v]) => Object.keys(v).length)
+  )
   statements.basis = sub.basis
   statements.periods = [
     { id: 'current', year: sub.fiscalYear ?? null, label: sub.fiscalYear ? `${sub.fiscalYear}년` : '당해', which: '당기', source: 'submission' },

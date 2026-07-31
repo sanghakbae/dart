@@ -152,7 +152,7 @@ export default function RcpsCard({ rcps, shares }) {
         )}
 
         <FinTable
-          columns={[{ key: 'v', label: '내용' }]}
+          columns={[{ key: 'v', label: '내용', align: 'left' }]}
           rows={[
             { label: '종류', level: 0, values: { v: latest?.name || '상환전환우선주' } },
             { label: '발행일', level: 1, values: { v: rcps.issueDate || '-' } },

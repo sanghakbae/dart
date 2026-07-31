@@ -85,7 +85,7 @@ export function parseStatements(doc, meta) {
   for (const b of blocks) applyUnit(b, periods)
 
   const resolvedBasis = resolveBasis(blocks, meta)
-  const primary = pickPrimaryBlocks(blocks, { ...meta, basis: resolvedBasis })
+  const primary = pickPrimaryBlocks(blocks, resolvedBasis)
   const values = collectValues(primary)
 
   return {
@@ -93,6 +93,7 @@ export function parseStatements(doc, meta) {
     primary: Object.fromEntries(Object.entries(primary).map(([k, v]) => [k, v.id])),
     periods,
     values,
+    valuesByBasis: collectValuesByBasis(blocks),
     basis: resolvedBasis,
   }
 }
@@ -167,8 +168,12 @@ function parseRow(row) {
   })
 
   // 주석 참조 열 제거: 오른쪽에 다른 숫자가 있는 '쉼표 없는 두 자리 이하 정수'
+  //
+  // 0 은 빼야 한다. 주석 번호는 1 부터 시작하므로 0 은 언제나 금액이고,
+  // 이걸 지우면 뒤의 열이 통째로 한 칸씩 당겨진다 — 아이스크림에듀 2025년
+  // 비지배지분 행 「0 | 5,508,371 | 436,660,121」 이 당기 5,508,371 로 뒤집혔다.
   const cleaned = nums.filter((n, i) => {
-    if (n.v === null) return true
+    if (n.v === null || n.v === 0) return true
     const isNoteRef = /^\(?\s*\d{1,2}\s*\)?$/.test(n.raw) && !n.raw.includes(',')
     return !(isNoteRef && i < nums.length - 1)
   })
@@ -282,12 +287,35 @@ function resolveBasis(blocks, meta) {
   return '별도'
 }
 
-/** 같은 종류의 블록이 여러 개면 계정 매칭이 가장 많은 것을 대표로 쓴다. */
-function pickPrimaryBlocks(blocks, meta) {
-  const preferred = meta.basis === '연결' ? '연결' : '별도'
+/**
+ * 기준별 수치 한 벌씩.
+ *
+ * 사업보고서에는 연결과 별도가 나란히 실린다. 대표 기준 한 벌만 남기면 다른 기준의
+ * 수치가 통째로 버려져, 추이에서 그 연도만 비어 보인다 — 아이스크림에듀는 별도가
+ * 2021~2025 년 내내 있는데도 2023·2024 사업보고서가 '연결' 로 분류돼 별도 추이에
+ * 두 해가 뚫렸다. 어느 쪽을 볼지는 화면에서 고르므로, 여기서는 있는 대로 다 담는다.
+ */
+function collectValuesByBasis(blocks) {
+  const out = {}
+  for (const basis of ['연결', '별도']) {
+    const primary = pickPrimaryBlocks(blocks, basis, { strict: true })
+    if (!Object.keys(primary).length) continue
+    const values = collectValues(primary)
+    if (Object.keys(values).length) out[basis] = values
+  }
+  return out
+}
+
+/**
+ * 같은 종류의 블록이 여러 개면 계정 매칭이 가장 많은 것을 대표로 쓴다.
+ * strict 면 고른 기준의 블록만 본다(기준별 수치를 따로 뽑을 때).
+ */
+function pickPrimaryBlocks(blocks, basis, { strict = false } = {}) {
+  const preferred = basis === '연결' ? '연결' : '별도'
   const out = {}
   for (const key of Object.keys(STATEMENTS)) {
-    const candidates = blocks.filter((b) => b.stmt === key && b.matchCount > 0)
+    let candidates = blocks.filter((b) => b.stmt === key && b.matchCount > 0)
+    if (strict) candidates = candidates.filter((b) => b.basis === preferred)
     if (!candidates.length) continue
     candidates.sort((a, b) => {
       const pa = a.basis === preferred ? 1 : 0

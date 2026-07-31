@@ -78,11 +78,13 @@ export function periodKeyOf(year, periodType = 'FY', basis = '별도') {
  * 감사보고서에는 당기와 전기가 함께 실리므로 두 기간을 모두 누적하고,
  * 전기 비교치로 들어온 값은 fromPrior 로 표시해 나중에 그 연도를 당기로 보고한
  * 보고서가 올라오면 덮어쓸 수 있게 한다.
+ *
+ * 사업보고서 한 건에 연결과 별도가 함께 실리므로 기준별로 각각 누적한다.
+ * 누적 키에 연결여부가 들어 있어 서로 덮지 않는다.
  */
 export function periodEntriesOf(report) {
   const meta = report.meta || {}
   const periods = report.periods || []
-  const values = report.values || {}
   const type = meta.periodType || 'FY'
   const reportId = reportIdOf(meta)
 
@@ -90,36 +92,53 @@ export function periodEntriesOf(report) {
   if (years[1] == null && years[0] != null) years[1] = years[0] - 1
 
   const out = {}
-  years.forEach((year, idx) => {
-    if (year == null) return
-    const slot = {}
-    for (const [key, row] of Object.entries(values)) {
-      const v = idx === 0 ? row?.current : row?.prior
-      if (v != null) slot[key] = v
-    }
-    if (!Object.keys(slot).length) return
+  for (const [basis, values] of Object.entries(valuesByBasisOf(report))) {
+    years.forEach((year, idx) => {
+      if (year == null) return
+      const slot = {}
+      for (const [key, row] of Object.entries(values)) {
+        const v = idx === 0 ? row?.current : row?.prior
+        if (v != null) slot[key] = v
+      }
+      if (!Object.keys(slot).length) return
 
-    out[periodKeyOf(year, type, meta.basis)] = {
-      year,
-      periodType: type,
-      periodLabel: meta.periodLabel || '연간',
-      basis: meta.basis || '별도',
-      reportId,
-      // 어느 보고서가 실은 값인지 — 나중 보고서의 재작성치가 옛 수치를 대체한다.
-      sourceYear: meta.fiscalYear ?? year,
-      fromPrior: idx === 1,
-      // 이 연도를 '당기'로 보고한 보고서가 있었는지. fromPrior 와는 다르다 —
-      // 나중 보고서의 전기 비교치가 이겨서 fromPrior 가 다시 true 로 덮여도,
-      // 당기 보고서를 한 번이라도 받았다는 사실은 유지돼야 한다.
-      reportedCurrent: idx === 0,
-      values: slot,
-      opinion: idx === 0 ? report.opinion || null : null,
-      auditor: idx === 0 ? meta.auditor || null : null,
-      docKind: idx === 0 ? meta.docKind || null : null,
-      updatedAt: report.createdAt || Date.now(),
-    }
-  })
+      out[periodKeyOf(year, type, basis)] = {
+        year,
+        periodType: type,
+        periodLabel: meta.periodLabel || '연간',
+        basis,
+        reportId,
+        // 어느 보고서가 실은 값인지 — 나중 보고서의 재작성치가 옛 수치를 대체한다.
+        sourceYear: meta.fiscalYear ?? year,
+        fromPrior: idx === 1,
+        // 이 연도를 '당기'로 보고한 보고서가 있었는지. fromPrior 와는 다르다 —
+        // 나중 보고서의 전기 비교치가 이겨서 fromPrior 가 다시 true 로 덮여도,
+        // 당기 보고서를 한 번이라도 받았다는 사실은 유지돼야 한다.
+        reportedCurrent: idx === 0,
+        values: slot,
+        opinion: idx === 0 ? report.opinion || null : null,
+        auditor: idx === 0 ? meta.auditor || null : null,
+        docKind: idx === 0 ? meta.docKind || null : null,
+        updatedAt: report.createdAt || Date.now(),
+      }
+    })
+  }
   return out
+}
+
+/**
+ * 보고서가 담고 있는 기준별 수치. { 연결: {...}, 별도: {...} }
+ * valuesByBasis 가 없는 옛 보고서는 문서 기준 한 벌로만 본다.
+ */
+export function valuesByBasisOf(report) {
+  const all = report.valuesByBasis || report.statements?.valuesByBasis || {}
+  const filled = Object.fromEntries(
+    Object.entries(all).filter(([, v]) => v && Object.keys(v).length)
+  )
+  if (Object.keys(filled).length) return filled
+  const values = report.values || report.statements?.values || {}
+  if (!Object.keys(values).length) return {}
+  return { [report.meta?.basis || '별도']: values }
 }
 
 /**

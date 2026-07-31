@@ -4,7 +4,8 @@ import {
   saveReport, listCompanies, loadCompanyReports, loadContent, backendLabel,
   deleteCompany, setCompanyShared, dropLegacyLocalStore,
 } from './lib/storage'
-import { buildTimeline, splitByPeriodType } from './lib/analyze/series'
+import { buildTimeline, splitByPeriodType, hasBasis } from './lib/analyze/series'
+import { valuesByBasisOf } from './lib/company'
 import { useAuth, signOut, authAvailable } from './lib/auth'
 import { touchUser, bumpUpload } from './lib/usage'
 import { prefetchExternals } from './lib/externals'
@@ -251,17 +252,18 @@ export default function App() {
       setPhase('')
       await refreshCompanies()
 
-      // 새 회사는 고용·투자·특허를 미리 받아 둔다. 탭마다 '받아오기' 를 세 번
-      // 누르게 하지 않으려는 것이고, 등록은 회사당 한 번뿐이라 한도에도 부담이 없다.
+      // 새 회사는 고용·투자·특허·사업자상태를 미리 받아 둔다. 탭마다 '받아오기' 를
+      // 여러 번 누르게 하지 않으려는 것이고, 등록은 회사당 한 번뿐이라 한도에도 부담이 없다.
       // 업로드 흐름을 막지 않도록 뒤에서 돌리고, 실패해도 조용히 넘긴다.
       for (const [ck, info] of fresh) {
-        toast(`${info.company} — 고용·투자·특허를 받아오는 중입니다`)
+        toast(`${info.company} — 고용·투자·특허·사업자상태를 받아오는 중입니다`)
         prefetchExternals(ck, info)
           .then((got) => {
             const names = [
               got.employment && '고용',
               got.funding && '투자',
               got.patents && '특허',
+              got.bizStatus && '사업자상태',
             ].filter(Boolean)
             if (names.length) toast(`${info.company} — ${names.join('·')} 받아왔습니다`)
           })
@@ -366,8 +368,9 @@ export default function App() {
     const rows = activeGroup?.reports || []
     const map = new Map()
     for (const r of rows) {
-      const b = r.meta?.basis || '별도'
-      map.set(b, (map.get(b) || 0) + 1)
+      // 문서 라벨이 아니라 그 안에 실린 본표로 센다. 사업보고서는 연결·별도를
+      // 함께 실으므로 한 건이 양쪽에 모두 들어간다.
+      for (const b of Object.keys(valuesByBasisOf(r))) map.set(b, (map.get(b) || 0) + 1)
     }
     const latestBasis = rows[0]?.meta?.basis
     return [...map.entries()]
@@ -393,7 +396,7 @@ export default function App() {
    */
   const asOfYear = active?.meta?.fiscalYear ?? null
   const basisReports = useMemo(
-    () => (activeGroup?.reports || []).filter((r) => !activeBasis || (r.meta?.basis || '별도') === activeBasis),
+    () => (activeGroup?.reports || []).filter((r) => hasBasis(r, activeBasis)),
     [activeGroup, activeBasis]
   )
   const trendReports = useMemo(
@@ -407,8 +410,12 @@ export default function App() {
   )
 
   const timeline = useMemo(
-    () => buildTimeline(trendReports, { labelSuffix: activeGroup?.type === 'FY' ? '' : activeGroup?.label }),
-    [trendReports, activeGroup]
+    () =>
+      buildTimeline(trendReports, {
+        labelSuffix: activeGroup?.type === 'FY' ? '' : activeGroup?.label,
+        basis: activeBasis,
+      }),
+    [trendReports, activeGroup, activeBasis]
   )
 
   const activeContent = contentKey ? content[contentKey] : null

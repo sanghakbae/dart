@@ -115,7 +115,8 @@ export default function TrendTab({
         )}
         {basisOptions.length > 1 && (
           <Callout>
-            이 회사에는 <strong>{basisOptions.map((o) => `${o.value} ${o.count}건`).join(' · ')}</strong> 이 있습니다.
+            이 회사 보고서에는 <strong>{basisOptions.map((o) => `${o.value} ${o.count}건`).join(' · ')}</strong> 의
+            재무제표가 실려 있습니다 (사업보고서 한 건에 연결과 별도가 함께 실리므로 합계가 보고서 수보다 많을 수 있습니다).
             연결은 종속회사까지 합산한 수치라 별도와 한 축에서 비교하면 증감이 실제보다 크게 보입니다.
             그래서 섞지 않고 <strong>{basis}</strong> 기준만으로 그렸습니다 — 위에서 바꿀 수 있습니다.
           </Callout>

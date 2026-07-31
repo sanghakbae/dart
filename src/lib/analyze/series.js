@@ -3,6 +3,7 @@
 // 연도별 보고서를 여러 건 올리면 자동으로 다년 추이로 확장된다.
 
 import { computeRatios, growth, ALL_RATIOS } from './ratios.js'
+import { valuesByBasisOf } from '../company.js'
 
 const PERIOD_ORDER = { FY: 4, Q3: 3, H1: 2, Q1: 1 }
 const PERIOD_LABEL = { FY: '연간', Q3: '3분기', H1: '반기', Q1: '1분기' }
@@ -23,16 +24,26 @@ export function splitByPeriodType(reports) {
 }
 
 /**
+ * 이 보고서에 그 기준의 수치가 실려 있는가.
+ * 사업보고서는 연결과 별도를 함께 싣는다 — 문서 라벨이 '연결' 이어도
+ * 별도 본표가 그 안에 있으면 별도 추이에 넣어야 한다.
+ */
+export function hasBasis(report, basis) {
+  if (!basis) return true
+  return Boolean(valuesByBasisOf(report)[basis])
+}
+
+/**
  * @param {Array} reports 저장된 보고서(요약) 목록 — 같은 보고기간 종류끼리 넘긴다
- * @param {{labelSuffix?: string}} [opts]
+ * @param {{labelSuffix?: string, basis?: string}} [opts]
  * @returns {{ years:number[], byYear:Map, rows:Array, sources:Array }}
  */
 export function buildTimeline(reports, opts = {}) {
   const suffix = opts.labelSuffix ? ` ${opts.labelSuffix}` : ''
-  return buildTimelineInner(reports, suffix)
+  return buildTimelineInner(reports, suffix, opts.basis || null)
 }
 
-function buildTimelineInner(reports, suffix) {
+function buildTimelineInner(reports, suffix, basis) {
   const byYear = new Map() // year → { year, values:{key:number}, ratios:{}, sources:[] }
 
   const upsert = (year, key, value, src, isCurrent) => {
@@ -56,12 +67,15 @@ function buildTimelineInner(reports, suffix) {
 
   for (const rep of reports) {
     const periods = rep.periods || rep.statements?.periods || []
-    const values = rep.values || rep.statements?.values || {}
+    const byBasis = valuesByBasisOf(rep)
+    // 기준을 고르면 그 기준의 수치만 쓴다. 없으면 이 보고서는 그 축에 아무것도 못 준다.
+    const values = basis ? byBasis[basis] : rep.values || rep.statements?.values || {}
+    if (!values) continue
     const src = {
       id: rep.id,
       fileName: rep.meta?.fileName,
       company: rep.meta?.company,
-      basis: rep.meta?.basis,
+      basis: basis || rep.meta?.basis,
       fiscalYear: rep.meta?.fiscalYear ?? null,
     }
     const curYear = periods[0]?.year ?? rep.meta?.fiscalYear ?? null
@@ -95,15 +109,15 @@ function buildTimelineInner(reports, suffix) {
     }
   })
 
-  return { years, byYear, rows, sources: dedupeSources(reports) }
+  return { years, byYear, rows, sources: dedupeSources(reports.filter((r) => hasBasis(r, basis)), basis) }
 }
 
-function dedupeSources(reports) {
+function dedupeSources(reports, basis) {
   return reports.map((r) => ({
     id: r.id,
     company: r.meta?.company,
     fiscalYear: r.meta?.fiscalYear,
-    basis: r.meta?.basis,
+    basis: basis || r.meta?.basis,
     fileName: r.meta?.fileName,
     createdAt: r.createdAt,
   }))

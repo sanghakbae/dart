@@ -141,7 +141,7 @@ export function FinTable({ columns, rows, note, minWidth }) {
             <tr>
               <th className="lbl" scope="col">계정과목</th>
               {columns.map((c) => (
-                <th key={c.key} scope="col">{c.label}</th>
+                <th key={c.key} scope="col" className={c.align === 'left' ? 'txt-left' : undefined}>{c.label}</th>
               ))}
             </tr>
           </thead>
@@ -161,8 +161,13 @@ export function FinTable({ columns, rows, note, minWidth }) {
                 {columns.map((c) => {
                   const v = r.values?.[c.key]
                   const isNum = typeof v === 'number'
+                  // 금액 칸은 자릿수를 맞추려고 오른쪽에 붙인다. 줄글이 들어가는 칸은
+                  // 그러면 문장이 오른쪽 끝에서 시작해 읽기 어렵다(RCPS 발행조건).
+                  const cls = [c.align === 'left' ? 'txt-left' : '', isNum && v < 0 ? 'neg' : '']
+                    .filter(Boolean)
+                    .join(' ')
                   return (
-                    <td key={c.key} data-label={c.label} className={isNum && v < 0 ? 'neg' : ''} title={isNum ? full(v) : undefined}>
+                    <td key={c.key} data-label={c.label} className={cls} title={isNum ? full(v) : undefined}>
                       {c.render ? c.render(v, r) : isNum ? accounting(v) : v ?? '-'}
                     </td>
                   )
