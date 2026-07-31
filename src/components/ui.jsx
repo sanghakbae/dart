@@ -42,7 +42,7 @@ export function Badge({ tone = 'muted', children, dot }) {
 }
 
 /** 스탯 타일. 큰 숫자는 축약, 전체 자릿수는 title 과 표에서 확인 가능하게 둔다. */
-export function Tile({ label, value, unit, suffix, delta, deltaLabel, hint, tone, worseWhenUp, alwaysBad }) {
+export function Tile({ label, value, unit, suffix, delta, deltaLabel, hint, tone, worseWhenUp, alwaysBad, onClick, active }) {
   const dir = delta == null ? 'flat' : delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat'
 
   // 바탕색 규칙 — 좋아졌으면 파랑, 나빠졌으면 빨강. 단 상태가 나쁜 항목은
@@ -57,10 +57,21 @@ export function Tile({ label, value, unit, suffix, delta, deltaLabel, hint, tone
   const negative = typeof value === 'number' && value < 0
   const deltaTone = worseWhenUp ? (dir === 'up' ? 'down' : dir === 'down' ? 'up' : 'flat') : dir
   const shade = negative || alwaysBad ? 'down' : deltaTone
+
+  // 누를 수 있는 타일은 버튼이어야 한다 — div 에 onClick 만 달면 키보드로 닿지 않는다.
+  const Tag = onClick ? 'button' : 'div'
+  const cls = [
+    'tile',
+    shade === 'flat' ? '' : `tile-${shade}`,
+    onClick ? 'tile-btn' : '',
+    active ? 'tile-on' : '',
+  ].filter(Boolean).join(' ')
+
   return (
-    <div
-      className={`tile${shade === 'flat' ? '' : ` tile-${shade}`}`}
+    <Tag
+      className={cls}
       title={hint || (typeof value === 'number' ? full(value) : undefined)}
+      {...(onClick ? { type: 'button', onClick, 'aria-pressed': Boolean(active) } : null)}
     >
       <div className="k">
         {label}
@@ -78,7 +89,7 @@ export function Tile({ label, value, unit, suffix, delta, deltaLabel, hint, tone
           {deltaLabel ? ` ${deltaLabel}` : ''}
         </div>
       )}
-    </div>
+    </Tag>
   )
 }
 

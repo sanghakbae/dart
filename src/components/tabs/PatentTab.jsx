@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Card, Tile, Callout, Badge } from '../ui'
 import { RemoteBar, RemoteEmpty } from '../RemoteBar'
 import { hasProxy } from '../../lib/proxyBase.js'
@@ -38,6 +38,40 @@ export default function PatentTab({ report }) {
     return { registered, pending: patents.length - registered, years, max }
   }, [patents])
 
+  /**
+   * 목록 필터. 53건이 한 표에 그대로 쏟아지면 "등록된 게 몇 건인지" 는 위 타일에서
+   * 읽히는데 정작 그게 어느 건인지는 눈으로 훑어야 했다. 타일과 연도 막대를 그대로
+   * 필터로 쓴다 — 이미 숫자가 적혀 있으니 누르면 그 숫자의 목록이 나오는 게 자연스럽다.
+   */
+  const [status, setStatus] = useState('all') // all · registered · pending
+  const [year, setYear] = useState(null)
+
+  // 회사를 옮기면 앞 회사에서 고른 조건이 남아 빈 목록으로 보인다.
+  useEffect(() => {
+    setStatus('all')
+    setYear(null)
+  }, [companyKey])
+
+  const shown = useMemo(
+    () =>
+      patents.filter((p) => {
+        if (status === 'registered' && !p.registrationNumber) return false
+        if (status === 'pending' && p.registrationNumber) return false
+        if (year != null && Number(String(p.applicationDate || '').slice(0, 4)) !== year) return false
+        return true
+      }),
+    [patents, status, year]
+  )
+
+  const filtered = status !== 'all' || year != null
+  const clear = () => {
+    setStatus('all')
+    setYear(null)
+  }
+  // 같은 타일을 다시 누르면 해제된다 — 켜는 방법만 있고 끄는 방법이 없으면 갇힌다.
+  const toggleStatus = (v) => setStatus((cur) => (cur === v ? 'all' : v))
+  const toggleYear = (y) => setYear((cur) => (cur === y ? null : y))
+
   if (loading) return <Card><div className="tnote">저장된 특허 정보를 확인하는 중…</div></Card>
 
   const bar = (
@@ -70,10 +104,28 @@ export default function PatentTab({ report }) {
           {error && <Callout tone="warn">새로 받아오지 못해 저장된 값을 보여줍니다. ({error})</Callout>}
           {warning && <Callout tone="warn">받아왔지만 DB 에 저장하지 못했습니다. 화면을 다시 열면 사라집니다. ({warning})</Callout>}
           <div className="grid grid-tiles">
-            <Tile label="전체" value={data.total} suffix="건" />
-            <Tile label="등록" value={stats.registered} suffix="건" tone="good" />
-            <Tile label="출원·공개" value={stats.pending} suffix="건" />
-            {stats.years[0] && <Tile label={`${stats.years[0][0]}년 출원`} value={stats.years[0][1]} suffix="건" />}
+            <Tile
+              label="전체" value={data.total} suffix="건"
+              onClick={clear} active={!filtered}
+              hint="필터 없이 전체 목록"
+            />
+            <Tile
+              label="등록" value={stats.registered} suffix="건" tone="good"
+              onClick={() => toggleStatus('registered')} active={status === 'registered'}
+              hint="등록번호가 있는 건만 보기"
+            />
+            <Tile
+              label="출원·공개" value={stats.pending} suffix="건"
+              onClick={() => toggleStatus('pending')} active={status === 'pending'}
+              hint="아직 등록되지 않은 건만 보기"
+            />
+            {stats.years[0] && (
+              <Tile
+                label={`${stats.years[0][0]}년 출원`} value={stats.years[0][1]} suffix="건"
+                onClick={() => toggleYear(stats.years[0][0])} active={year === stats.years[0][0]}
+                hint={`${stats.years[0][0]}년에 출원한 건만 보기`}
+              />
+            )}
           </div>
           {data.truncated && (
             <Callout tone="warn">
@@ -92,18 +144,43 @@ export default function PatentTab({ report }) {
           <ul className="yearbars">
             {stats.years.map(([y, n]) => (
               <li key={y}>
-                <span className="yb-y">{y}</span>
-                <span className="yb-track">
-                  <i style={{ width: `${Math.max(4, (n / stats.max) * 100)}%` }} />
-                </span>
-                <span className="yb-n">{n}</span>
+                {/* 막대도 필터다. 연도를 보고 "그 해에 뭘 냈지" 가 바로 다음 질문이다. */}
+                <button
+                  type="button"
+                  className={`yb-row${year === y ? ' on' : ''}`}
+                  onClick={() => toggleYear(y)}
+                  aria-pressed={year === y}
+                  title={`${y}년에 출원한 건만 보기`}
+                >
+                  <span className="yb-y">{y}</span>
+                  <span className="yb-track">
+                    <i style={{ width: `${Math.max(4, (n / stats.max) * 100)}%` }} />
+                  </span>
+                  <span className="yb-n">{n}</span>
+                </button>
               </li>
             ))}
           </ul>
         </Card>
       )}
 
-      <Card title="특허 목록" sub={`${patents.length}건 · 출원일 최근순`} tight>
+      <Card
+        title="특허 목록"
+        sub={
+          filtered
+            ? `${shown.length}건 / 전체 ${patents.length}건 · ${[
+                status === 'registered' ? '등록' : status === 'pending' ? '출원·공개' : null,
+                year != null ? `${year}년 출원` : null,
+              ].filter(Boolean).join(' · ')}`
+            : `${patents.length}건 · 출원일 최근순`
+        }
+        right={
+          filtered ? (
+            <button className="btn btn-sm" type="button" onClick={clear}>필터 해제</button>
+          ) : null
+        }
+        tight
+      >
         <div style={{ overflowX: 'auto' }}>
           <table className="tbl">
             <thead>
@@ -117,7 +194,7 @@ export default function PatentTab({ report }) {
               </tr>
             </thead>
             <tbody>
-              {patents.map((p) => (
+              {shown.map((p) => (
                 <tr key={p.applicationNumber}>
                   <td>{p.applicationDate || '-'}</td>
                   <td><Badge tone={p.registrationNumber ? 'good' : 'muted'}>{p.status || '-'}</Badge></td>
@@ -136,6 +213,13 @@ export default function PatentTab({ report }) {
                   <td className="txt" style={{ color: 'var(--text-3)' }}>{p.ipc.slice(0, 2).join(', ')}</td>
                 </tr>
               ))}
+              {!shown.length && (
+                <tr>
+                  <td colSpan={6} className="txt" style={{ textAlign: 'center', color: 'var(--text-3)', padding: '18px 0' }}>
+                    고른 조건에 맞는 특허가 없습니다.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
