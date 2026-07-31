@@ -14,6 +14,7 @@
 import { handleDart } from './dart-handler.mjs'
 import { handleNps } from './nps-handler.mjs'
 import { handleKipris } from './kipris-handler.mjs'
+import { handleNts } from './nts-handler.mjs'
 import { handleHealth } from './health-handler.mjs'
 
 const ALLOWED = [
@@ -54,7 +55,8 @@ export default {
     const isDart = url.pathname.startsWith('/api/dart/')
     const isNps = url.pathname.startsWith('/api/nps/')
     const isKipris = url.pathname.startsWith('/api/kipris/')
-    if (!isHealth && !isDart && !isNps && !isKipris) {
+    const isNts = url.pathname.startsWith('/api/nts/')
+    if (!isHealth && !isDart && !isNps && !isKipris && !isNts) {
       return json({ error: `알 수 없는 경로: ${url.pathname}` }, 404, {})
     }
 
@@ -80,7 +82,9 @@ export default {
       ? await handleNps(forwarded, env.NPS_API_KEY || '')
       : isKipris
         ? await handleKipris(forwarded, env.KIPRIS_API_KEY || '')
-        : await handleDart(forwarded, env.DART_API_KEY || '')
+        : isNts
+          ? await handleNts(forwarded, env.NTS_API_KEY || '')
+          : await handleDart(forwarded, env.DART_API_KEY || '')
 
     if (!response) return json({ error: '처리할 수 없는 요청입니다.' }, 404, {})
     return scrub(response, env)
@@ -96,7 +100,7 @@ export default {
  */
 async function scrub(response, env) {
   if (response.status < 400) return response
-  const keys = [env.DART_API_KEY, env.NPS_API_KEY, env.KIPRIS_API_KEY].filter((k) => k && k.length >= 8)
+  const keys = [env.DART_API_KEY, env.NPS_API_KEY, env.KIPRIS_API_KEY, env.NTS_API_KEY].filter((k) => k && k.length >= 8)
   if (!keys.length) return response
 
   // 본문을 읽는 순간 원본 Response 는 다시 쓸 수 없다. 지울 게 없더라도

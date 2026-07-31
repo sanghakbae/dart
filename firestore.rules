@@ -84,6 +84,15 @@ service cloud.firestore {
         allow delete: if signedIn();
       }
 
+      // 국세청 사업자 상태 캐시(하루 1회 갱신).
+      match /bizstatus/{docId} {
+        allow read: if signedIn();
+        allow create, update: if signedIn()
+          && request.resource.data.keys().hasAll(['fetchedAt'])
+          && request.resource.data.fetchedAt is int;
+        allow delete: if signedIn();
+      }
+
       // 특허 캐시(하루 1회 갱신).
       match /patents/{docId} {
         allow read: if signedIn();

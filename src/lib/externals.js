@@ -8,10 +8,13 @@
 // 그래서 탭을 열 때마다 받지 않고, 받은 것은 DB 에 넣어 두고 쓴다.
 
 import { fetchEmployment } from './nps/api.js'
+import { fetchBizStatus } from './nts/api.js'
 import { fetchFundingRounds } from './dart/funding.js'
 import { searchCompanies } from './dart/api.js'
 import { proxyUrl, hasProxy } from './proxyBase.js'
-import { saveEmployment, saveFunding, savePatents } from './storage.js'
+import { saveEmployment, saveFunding, savePatents, saveBizStatus } from './storage.js'
+
+export { fetchBizStatus }
 
 /**
  * 특허. 이름 변형(주식회사 유무)과 정확 일치 판정은 프록시가 한다.
@@ -53,10 +56,10 @@ export function fetchEmploymentFor(company, bizNo) {
  * 하나가 실패해도 나머지는 저장한다. 실패는 조용히 넘긴다 —
  * 업로드는 이미 끝났고, 사용자는 탭에서 '받아오기' 로 다시 시도할 수 있다.
  *
- * @returns {Promise<{employment:boolean, funding:boolean, patents:boolean}>} 저장 성공 여부
+ * @returns {Promise<{employment:boolean, funding:boolean, patents:boolean, bizStatus:boolean}>} 저장 성공 여부
  */
 export async function prefetchExternals(companyKey, { company, bizNo } = {}) {
-  const done = { employment: false, funding: false, patents: false }
+  const done = { employment: false, funding: false, patents: false, bizStatus: false }
   if (!companyKey || !company || !hasProxy) return done
 
   const tasks = [
@@ -71,6 +74,11 @@ export async function prefetchExternals(companyKey, { company, bizNo } = {}) {
     ['patents', async () => {
       const v = await fetchPatents(company)
       await savePatents(companyKey, v)
+    }],
+    // 국세청 상태는 상류를 한 번만 부르는 가벼운 조회다. 등록 때 같이 받아 둔다.
+    ['bizStatus', async () => {
+      const v = await fetchBizStatus(company, bizNo)
+      await saveBizStatus(companyKey, v)
     }],
   ]
 

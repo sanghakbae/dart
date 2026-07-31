@@ -397,6 +397,38 @@ export async function savePatents(companyKey, payload) {
 
 export { PATENT_TTL }
 
+// ── 사업자 상태 캐시 ─────────────────────────────────────────
+// 국세청 자료는 국세청 쪽 반영이 며칠 걸린다. 하루 캐시로 충분하다.
+const BIZ_STATUS_TTL = 24 * 60 * 60 * 1000
+const bizStatusDoc = (ck) => doc(db, COL, ck, 'bizstatus', 'latest')
+
+export async function loadBizStatus(companyKey) {
+  if (!usesFirestore || !companyKey) return null
+  try {
+    const snap = await getDoc(bizStatusDoc(companyKey))
+    if (!snap.exists()) return null
+    const data = snap.data()
+    // 상태를 못 읽은 캐시가 굳으면 하루 동안 '확인 불가' 가 그대로 남는다.
+    const empty = !data.status
+    const outdated = data.v !== CACHE_V
+    return { ...data, stale: empty || outdated || Date.now() - (data.fetchedAt || 0) > BIZ_STATUS_TTL }
+  } catch {
+    return null
+  }
+}
+
+export async function saveBizStatus(companyKey, payload) {
+  if (!usesFirestore || !companyKey) return { saved: false, warning: null }
+  try {
+    await setDoc(bizStatusDoc(companyKey), sanitize({ ...payload, v: CACHE_V, fetchedAt: Date.now() }))
+    return { saved: true, warning: null }
+  } catch (e) {
+    return { saved: false, warning: firestoreHint(e) }
+  }
+}
+
+export { BIZ_STATUS_TTL }
+
 
 export async function loadContent(companyKey, reportId) {
   if (!usesFirestore) return null
@@ -430,7 +462,7 @@ export async function deleteCompany(companyKey) {
     try {
       // 외부 조회 캐시(고용·투자·특허)도 같이 지운다. 남겨 두면 같은 회사를
       // 다시 올렸을 때 예전에 받아 둔 값이 되살아난다.
-      for (const sub of ['employment', 'funding', 'patents']) {
+      for (const sub of ['employment', 'funding', 'patents', 'bizstatus']) {
         const cached = await getDocs(collection(db, COL, companyKey, sub))
         await commitAll(cached.docs.map((d) => d.ref))
       }

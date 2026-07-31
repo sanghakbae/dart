@@ -6,12 +6,14 @@
 import { handleDart } from './dart-handler.mjs'
 import { handleNps } from './nps-handler.mjs'
 import { handleKipris } from './kipris-handler.mjs'
+import { handleNts } from './nts-handler.mjs'
 import { handleHealth } from './health-handler.mjs'
 
 export function dartProxy(env = {}) {
   const dartKey = env.DART_API_KEY || process.env.DART_API_KEY || ''
   const npsKey = env.NPS_API_KEY || process.env.NPS_API_KEY || ''
   const kiprisKey = env.KIPRIS_API_KEY || process.env.KIPRIS_API_KEY || ''
+  const ntsKey = env.NTS_API_KEY || process.env.NTS_API_KEY || ''
 
   return {
     name: 'dart-proxy',
@@ -28,18 +30,22 @@ export function dartProxy(env = {}) {
       }
       server.middlewares.use(async (req, res, next) => {
         const isHealth = req.url === '/api/health' || req.url?.startsWith('/api/health?')
-        const isApi = ['/api/dart/', '/api/nps/', '/api/kipris/'].some((p) => req.url?.startsWith(p))
+        const isApi = ['/api/dart/', '/api/nps/', '/api/kipris/', '/api/nts/'].some((p) => req.url?.startsWith(p))
         if (!isHealth && !isApi) return next()
         try {
           const url = `http://localhost${req.url}`
           const request = new Request(url, { method: req.method, headers: toHeaders(req.headers) })
           const response = isHealth
-            ? await handleHealth(request, { DART_API_KEY: dartKey, NPS_API_KEY: npsKey, KIPRIS_API_KEY: kiprisKey })
+            ? await handleHealth(request, {
+                DART_API_KEY: dartKey, NPS_API_KEY: npsKey, KIPRIS_API_KEY: kiprisKey, NTS_API_KEY: ntsKey,
+              })
             : req.url.startsWith('/api/nps/')
               ? await handleNps(request, npsKey)
               : req.url.startsWith('/api/kipris/')
                 ? await handleKipris(request, kiprisKey)
-                : await handleDart(request, dartKey)
+                : req.url.startsWith('/api/nts/')
+                  ? await handleNts(request, ntsKey)
+                  : await handleDart(request, dartKey)
           if (!response) return next()
           res.statusCode = response.status
           response.headers.forEach((v, k) => res.setHeader(k, v))
