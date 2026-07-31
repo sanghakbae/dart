@@ -68,9 +68,17 @@ export default function PatentTab({ report }) {
     setStatus('all')
     setYear(null)
   }
-  // 같은 타일을 다시 누르면 해제된다 — 켜는 방법만 있고 끄는 방법이 없으면 갇힌다.
-  const toggleStatus = (v) => setStatus((cur) => (cur === v ? 'all' : v))
-  const toggleYear = (y) => setYear((cur) => (cur === y ? null : y))
+  // 한 번에 하나만 걸린다. 상태와 연도를 겹쳐 걸 수 있게 했더니 타일이 둘 켜져
+  // 무엇이 선택된 상태인지 읽히지 않았다 — 하나를 고르면 다른 쪽은 풀린다.
+  // 같은 것을 다시 누르면 해제된다(켜는 방법만 있고 끄는 방법이 없으면 갇힌다).
+  const toggleStatus = (v) => {
+    setYear(null)
+    setStatus((cur) => (cur === v ? 'all' : v))
+  }
+  const toggleYear = (y) => {
+    setStatus('all')
+    setYear((cur) => (cur === y ? null : y))
+  }
 
   if (loading) return <Card><div className="tnote">저장된 특허 정보를 확인하는 중…</div></Card>
 
@@ -119,22 +127,8 @@ export default function PatentTab({ report }) {
               onClick={() => toggleStatus('pending')} active={status === 'pending'}
               hint="아직 등록되지 않은 건만 보기"
             />
-            {/* 이 타일만 축이 다르다(상태가 아니라 연도). 그래서 앞의 셋과 동시에
-                켜질 수 있다 — 한 묶음에서 둘이 선택된 것으로 읽히지 않게 아래에
-                글로 밝혀 둔다. 아래 '연도별 출원' 막대와 같은 축이라 함께 켜진다. */}
-            {stats.years[0] && (
-              <Tile
-                label={`${stats.years[0][0]}년 출원`} value={stats.years[0][1]} suffix="건"
-                onClick={() => toggleYear(stats.years[0][0])} active={year === stats.years[0][0]}
-                hint={`${stats.years[0][0]}년에 출원한 건만 보기`}
-              />
-            )}
           </div>
-          <div className="tnote">
-            타일을 누르면 아래 목록이 걸러집니다. <strong>상태</strong>(등록 · 출원·공개)와{' '}
-            <strong>연도</strong>는 서로 다른 조건이라 겹쳐 걸 수 있습니다 — 둘이 함께 켜지면
-            둘 다 만족하는 건만 남습니다.
-          </div>
+          <div className="tnote">타일을 누르면 아래 목록이 걸러집니다. 연도는 아래 막대에서 고릅니다.</div>
           {data.truncated && (
             <Callout tone="warn">
               KIPRIS 출원인 검색은 이름이 비슷한 남의 특허까지 함께 돌려줍니다
