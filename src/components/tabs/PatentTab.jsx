@@ -119,12 +119,11 @@ export default function PatentTab({ report }) {
               onClick={() => toggleStatus('pending')} active={status === 'pending'}
               hint="아직 등록되지 않은 건만 보기"
             />
+            {/* 연도는 아래 '연도별 출원' 막대가 맡는다. 여기서도 누르게 하면 한 줄에
+                켜진 타일이 둘이 되어(출원·공개 + 2026년) 한 묶음에서 두 개가 선택된
+                것처럼 보인다 — 실제로는 서로 다른 축인데 화면이 그걸 못 알려준다. */}
             {stats.years[0] && (
-              <Tile
-                label={`${stats.years[0][0]}년 출원`} value={stats.years[0][1]} suffix="건"
-                onClick={() => toggleYear(stats.years[0][0])} active={year === stats.years[0][0]}
-                hint={`${stats.years[0][0]}년에 출원한 건만 보기`}
-              />
+              <Tile label={`${stats.years[0][0]}년 출원`} value={stats.years[0][1]} suffix="건" />
             )}
           </div>
           {data.truncated && (
@@ -138,7 +137,11 @@ export default function PatentTab({ report }) {
       </Card>
 
       {stats.years.length > 1 && (
-        <Card title="연도별 출원" sub={`${stats.years[0][0]}~${stats.years[stats.years.length - 1][0]}년`}>
+        <Card
+          title="연도별 출원"
+          sub={`${stats.years[0][0]}~${stats.years[stats.years.length - 1][0]}년 · 연도를 누르면 목록이 걸러집니다`}
+          right={year != null ? <button className="btn btn-sm" type="button" onClick={() => setYear(null)}>{year}년 해제</button> : null}
+        >
           {/* 표로 늘어놓으면 아홉 줄을 눈으로 훑어야 한다. 막대 하나로 흐름이 바로 보인다.
               최근 연도를 맨 위에 둔다 — 특허 목록도 최근순이라 눈이 같은 방향으로 움직인다. */}
           <ul className="yearbars">
