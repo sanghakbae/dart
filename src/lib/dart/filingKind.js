@@ -42,3 +42,21 @@ export function filingPeriodKey(nm = '') {
 
   return type ? `${year}-${type}` : null
 }
+
+/**
+ * 공시 이름으로 알 수 있는 연결여부 코드('c' · 's'), 모르면 null.
+ *
+ * 비상장사는 「감사보고서」(별도)와 「연결감사보고서」(연결)를 따로 공시한다. 둘은
+ * 다른 문서라 각각 저장되므로(reportIdOf 의 -s · -c), 별도를 받아 뒀다고 연결까지
+ * 잠그면 연결을 영영 못 받는다.
+ *
+ * 사업보고서는 연결과 별도를 한 건에 함께 실어, 어느 쪽으로 저장될지 이름만으로는
+ * 알 수 없다 — 그때는 null 을 주고 둘 중 하나라도 있으면 받은 것으로 본다.
+ */
+export function filingBasisCode(nm = '') {
+  const s = String(nm)
+  if (/연결/.test(s)) return 'c'
+  // 「감사보고서」는 별도 재무제표에 대한 것이다(연결은 이름에 '연결' 이 붙는다).
+  if (/감사보고서|검토보고서/.test(s)) return 's'
+  return null
+}

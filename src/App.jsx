@@ -360,10 +360,11 @@ export default function App() {
     [periodGroups, periodType, active]
   )
   /**
-   * 회사별로 이미 받아 둔 보고기간 — 'DART 에서 가져오기' 목록에서 그 공시를 잠근다.
+   * 회사별로 이미 받아 둔 보고서 ID — 'DART 에서 가져오기' 목록에서 그 공시를 잠근다.
    *
    * 키는 정규화한 회사명(DART 표기와 보고서 표기가 '주식회사' 유무로 갈리므로),
-   * 값은 "2025-FY" 같은 기간 키 집합이다. 보고서 ID 에서 연결여부만 떼면 된다.
+   * 값은 "2025-FY-s" 같은 보고서 ID 집합이다. 연결여부까지 그대로 둔다 —
+   * 「감사보고서」와 「연결감사보고서」는 다른 문서라 따로 잠겨야 한다.
    */
   const importedPeriods = useMemo(() => {
     const map = new Map()
@@ -371,11 +372,7 @@ export default function App() {
       const key = normalizeCompany(c.name)
       if (!key) continue
       const set = map.get(key) || new Set()
-      // reportId = "연도-기간종류-연결여부" → 뒤의 한 조각만 떼어 낸다.
-      for (const id of c.reportIds || []) {
-        const at = String(id).lastIndexOf('-')
-        if (at > 0) set.add(String(id).slice(0, at))
-      }
+      for (const id of c.reportIds || []) set.add(String(id))
       map.set(key, set)
     }
     return map

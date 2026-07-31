@@ -3,7 +3,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { filingKind } from '../server/dart-handler.mjs'
-import { filingPeriodKey } from '../src/lib/dart/filingKind.js'
+import { filingPeriodKey, filingBasisCode } from '../src/lib/dart/filingKind.js'
 
 test('상장사 사업보고서는 연간', () => {
   assert.equal(filingKind('사업보고서 (2025.12)'), 'annual')
@@ -74,4 +74,28 @@ test('기간 키 — 연도를 못 찾으면 null (잠그지 않는다)', () => 
 test('기간 키 — 12·6·9·3 이 아닌 결산월은 이름으로 가른다', () => {
   assert.equal(filingPeriodKey('사업보고서 (2025.02)'), '2025-FY')
   assert.equal(filingPeriodKey('무슨보고서 (2025.02)'), null)
+})
+
+test('연결여부 — 이름에 연결이 있으면 c, 감사보고서는 s, 사업보고서는 모른다', () => {
+  assert.equal(filingBasisCode('연결감사보고서 (2025.12)'), 'c')
+  assert.equal(filingBasisCode('[기재정정]연결감사보고서'), 'c')
+  assert.equal(filingBasisCode('감사보고서 (2025.12)'), 's')
+  // 사업보고서는 연결·별도를 한 건에 함께 실어 어느 쪽으로 저장될지 모른다.
+  assert.equal(filingBasisCode('사업보고서 (2025.12)'), null)
+})
+
+test('잠금 — 별도를 받아 뒀다고 연결까지 잠기지 않는다', () => {
+  // 「감사보고서」와 「연결감사보고서」는 다른 문서다. 별도만 받은 상태에서
+  // 연결까지 잠그면 연결을 영영 받을 수 없다.
+  const have = new Set(['2025-FY-s'])
+  const done = (nm) => {
+    const k = filingPeriodKey(nm)
+    const code = filingBasisCode(nm)
+    return code ? have.has(`${k}-${code}`) : have.has(`${k}-s`) || have.has(`${k}-c`)
+  }
+  assert.equal(done('감사보고서 (2025.12)'), true)
+  assert.equal(done('연결감사보고서 (2025.12)'), false)
+  // 사업보고서는 어느 쪽이든 있으면 받은 것으로 본다.
+  assert.equal(done('사업보고서 (2025.12)'), true)
+  assert.equal(done('사업보고서 (2024.12)'), false)
 })

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { searchCompanies, fetchFilings, fetchDocumentFile } from '../lib/dart/api'
-import { filingKind, filingPeriodKey } from '../lib/dart/filingKind'
+import { filingKind, filingPeriodKey, filingBasisCode } from '../lib/dart/filingKind'
 import { normalizeCompany } from '../lib/company'
 import { Callout, Empty, Badge } from './ui'
 
@@ -143,12 +143,16 @@ export default function DartImport({ onFiles, busy, imported }) {
               const annual = filings.filter((f) => kindOf(f) === 'annual')
               const periodic = filings.filter((f) => kindOf(f) !== 'annual')
 
-              // 이미 받아 둔 기간은 잠근다. 같은 기간을 다시 받아도 덮어쓰기만 하는데,
-              // 목록만 보고는 무엇을 받았는지 알 수 없어 같은 것을 또 눌러 보게 된다.
+              // 이미 받아 둔 공시는 잠근다. 같은 것을 다시 받아도 덮어쓰기만 하는데,
+              // 목록만 보고는 무엇을 받았는지 알 수 없어 또 눌러 보게 된다.
               const have = imported?.get(normalizeCompany(picked.name)) || null
               const isDone = (f) => {
                 const k = filingPeriodKey(f.reportNm)
-                return Boolean(k && have?.has(k))
+                if (!k || !have) return false
+                const code = filingBasisCode(f.reportNm)
+                // 이름으로 연결여부를 알 수 있으면 그것만 본다. 사업보고서처럼
+                // 알 수 없으면 둘 중 하나라도 있으면 받은 것으로 본다.
+                return code ? have.has(`${k}-${code}`) : have.has(`${k}-s`) || have.has(`${k}-c`)
               }
 
               const row = (f) => {
@@ -177,8 +181,9 @@ export default function DartImport({ onFiles, busy, imported }) {
                 <>
                   {doneCount > 0 && (
                     <div className="tnote">
-                      이미 받아 둔 <strong>{doneCount}건</strong>은 잠갔습니다. 다시 받으려면 회사 화면에서
-                      그 보고서를 지우거나, 파일로 올려 주세요.
+                      이미 받아 둔 <strong>공시 {doneCount}건</strong>은 잠갔습니다. 다시 받으려면 회사
+                      화면에서 그 보고서를 지우거나, 파일로 올려 주세요.
+                      {/* 원본과 정정본은 같은 보고서로 저장되므로, 공시 수가 보고서 수보다 많을 수 있다. */}
                     </div>
                   )}
                   {annual.length > 0 && <ul className="dart-hits">{annual.map(row)}</ul>}
