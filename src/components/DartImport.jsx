@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { searchCompanies, fetchFilings, fetchDocumentFile } from '../lib/dart/api'
-import { filingKind } from '../lib/dart/filingKind'
+import { filingKind, filingPeriodKey } from '../lib/dart/filingKind'
+import { normalizeCompany } from '../lib/company'
 import { Callout, Empty, Badge } from './ui'
 
 /**
@@ -9,8 +10,10 @@ import { Callout, Empty, Badge } from './ui'
  * 사용자가 뷰어에서 어떤 파일을 받았느냐에 따라 표지만 담긴 조각이 올라오는 일이 잦았다.
  * 여기서 받으면 원문 XML 전체가 그대로 오므로 그 문제가 없다.
  * 받은 파일은 업로드와 똑같이 onFiles() 로 흘려보낸다 — 파서·저장·화면을 그대로 쓴다.
+ *
+ * @param {Map<string, Set<string>>} [imported] 정규화한 회사명 → 이미 받은 기간 키("2025-FY")
  */
-export default function DartImport({ onFiles, busy }) {
+export default function DartImport({ onFiles, busy, imported }) {
   const [term, setTerm] = useState('')
   const [hits, setHits] = useState([])
   const [searching, setSearching] = useState(false)
@@ -139,17 +142,45 @@ export default function DartImport({ onFiles, busy }) {
               const kindOf = (f) => f.kind || filingKind(f.reportNm)
               const annual = filings.filter((f) => kindOf(f) === 'annual')
               const periodic = filings.filter((f) => kindOf(f) !== 'annual')
-              const row = (f) => (
-                <li key={f.rceptNo}>
-                  <button type="button" onClick={() => pull(f)} disabled={busy || pulling}>
-                    <span className="dh-name">{f.reportNm}</span>
-                    <span className="dh-code">{fmtDate(f.rceptDt)}</span>
-                    <span className="dh-go">{pulling === f.rceptNo ? '가져오는 중…' : '가져오기'}</span>
-                  </button>
-                </li>
-              )
+
+              // 이미 받아 둔 기간은 잠근다. 같은 기간을 다시 받아도 덮어쓰기만 하는데,
+              // 목록만 보고는 무엇을 받았는지 알 수 없어 같은 것을 또 눌러 보게 된다.
+              const have = imported?.get(normalizeCompany(picked.name)) || null
+              const isDone = (f) => {
+                const k = filingPeriodKey(f.reportNm)
+                return Boolean(k && have?.has(k))
+              }
+
+              const row = (f) => {
+                const done = isDone(f)
+                return (
+                  <li key={f.rceptNo}>
+                    <button
+                      type="button"
+                      onClick={() => pull(f)}
+                      disabled={busy || Boolean(pulling) || done}
+                      title={done ? '이미 받아 둔 보고기간입니다' : undefined}
+                    >
+                      <span className="dh-name">{f.reportNm}</span>
+                      <span className="dh-code">{fmtDate(f.rceptDt)}</span>
+                      {done ? (
+                        <span className="dh-go done">가져옴</span>
+                      ) : (
+                        <span className="dh-go">{pulling === f.rceptNo ? '가져오는 중…' : '가져오기'}</span>
+                      )}
+                    </button>
+                  </li>
+                )
+              }
+              const doneCount = filings.filter(isDone).length
               return (
                 <>
+                  {doneCount > 0 && (
+                    <div className="tnote">
+                      이미 받아 둔 <strong>{doneCount}건</strong>은 잠갔습니다. 다시 받으려면 회사 화면에서
+                      그 보고서를 지우거나, 파일로 올려 주세요.
+                    </div>
+                  )}
                   {annual.length > 0 && <ul className="dart-hits">{annual.map(row)}</ul>}
                   {annual.length === 0 && (
                     <Callout tone="warn">

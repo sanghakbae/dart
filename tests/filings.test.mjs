@@ -3,6 +3,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { filingKind } from '../server/dart-handler.mjs'
+import { filingPeriodKey } from '../src/lib/dart/filingKind.js'
 
 test('상장사 사업보고서는 연간', () => {
   assert.equal(filingKind('사업보고서 (2025.12)'), 'annual')
@@ -45,4 +46,32 @@ test('mapFilings — 감사보고서류만 남기고 kind 를 붙인다', () => 
 
 test('mapFilings — 빈 입력도 안전', () => {
   assert.deepEqual(mapFilings(), [])
+})
+
+// ── 이미 받아 둔 공시 잠그기 ──────────────────────────────
+// 목록만 보고는 무엇을 받았는지 알 수 없어 같은 것을 또 눌러 보게 됐다.
+// 저장된 보고서 ID(연도-기간종류-연결여부)와 맞추려면 공시 이름에서 앞부분을 뽑아야 한다.
+test('기간 키 — 결산월로 기간종류를 가른다', () => {
+  assert.equal(filingPeriodKey('감사보고서 (2025.12)'), '2025-FY')
+  assert.equal(filingPeriodKey('사업보고서 (2025.12)'), '2025-FY')
+  assert.equal(filingPeriodKey('반기보고서 (2025.06)'), '2025-H1')
+  assert.equal(filingPeriodKey('분기보고서 (2025.09)'), '2025-Q3')
+  assert.equal(filingPeriodKey('분기보고서 (2025.03)'), '2025-Q1')
+})
+
+test('기간 키 — 정정 말머리가 붙어도 같은 기간이다', () => {
+  // 원본과 정정본은 같은 보고서다. 원본을 받아 뒀으면 정정본도 잠겨야 한다
+  // (같은 ID 로 덮어쓰므로 새 보고서가 생기지 않는다).
+  assert.equal(filingPeriodKey('[기재정정]사업보고서 (2015.12)'), '2015-FY')
+  assert.equal(filingPeriodKey('[첨부정정]감사보고서 (2018.12)'), '2018-FY')
+})
+
+test('기간 키 — 연도를 못 찾으면 null (잠그지 않는다)', () => {
+  assert.equal(filingPeriodKey('감사보고서'), null)
+  assert.equal(filingPeriodKey(''), null)
+})
+
+test('기간 키 — 12·6·9·3 이 아닌 결산월은 이름으로 가른다', () => {
+  assert.equal(filingPeriodKey('사업보고서 (2025.02)'), '2025-FY')
+  assert.equal(filingPeriodKey('무슨보고서 (2025.02)'), null)
 })

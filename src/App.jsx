@@ -5,7 +5,7 @@ import {
   deleteCompany, setCompanyShared, dropLegacyLocalStore,
 } from './lib/storage'
 import { buildTimeline, splitByPeriodType, hasBasis } from './lib/analyze/series'
-import { valuesByBasisOf } from './lib/company'
+import { valuesByBasisOf, normalizeCompany } from './lib/company'
 import { useAuth, signOut, authAvailable } from './lib/auth'
 import { touchUser, bumpUpload } from './lib/usage'
 import { prefetchExternals } from './lib/externals'
@@ -360,6 +360,28 @@ export default function App() {
     [periodGroups, periodType, active]
   )
   /**
+   * 회사별로 이미 받아 둔 보고기간 — 'DART 에서 가져오기' 목록에서 그 공시를 잠근다.
+   *
+   * 키는 정규화한 회사명(DART 표기와 보고서 표기가 '주식회사' 유무로 갈리므로),
+   * 값은 "2025-FY" 같은 기간 키 집합이다. 보고서 ID 에서 연결여부만 떼면 된다.
+   */
+  const importedPeriods = useMemo(() => {
+    const map = new Map()
+    for (const c of companies) {
+      const key = normalizeCompany(c.name)
+      if (!key) continue
+      const set = map.get(key) || new Set()
+      // reportId = "연도-기간종류-연결여부" → 뒤의 한 조각만 떼어 낸다.
+      for (const id of c.reportIds || []) {
+        const at = String(id).lastIndexOf('-')
+        if (at > 0) set.add(String(id).slice(0, at))
+      }
+      map.set(key, set)
+    }
+    return map
+  }, [companies])
+
+  /**
    * 연결과 별도는 합산 범위가 달라 한 축에 섞으면 비교가 성립하지 않는다.
    * 무하유처럼 2024년엔 별도만, 2025년엔 별도·연결이 함께 있는 경우가 흔하므로
    * 기준을 골라 볼 수 있게 하고, 기본값은 연도가 더 많이 쌓인 쪽으로 둔다.
@@ -478,7 +500,7 @@ export default function App() {
             />
 
             <Card title="DART 에서 가져오기" sub="회사명으로 찾아 공시 원문을 바로 받습니다">
-              <DartImport onFiles={handleFiles} busy={busy} />
+              <DartImport onFiles={handleFiles} busy={busy} imported={importedPeriods} />
             </Card>
 
             {dbState === 'blocked' && (

@@ -486,6 +486,8 @@ main { padding-bottom: 64px; }
 .dh-name { font-weight: 600; flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
 .dh-code { color: var(--text-3); font-size: 13px; font-variant-numeric: tabular-nums; flex: none; }
 .dh-go { color: var(--series-1); font-size: 13.5px; font-weight: 600; flex: none; }
+/* 이미 받아 둔 공시 — 파랑(누를 수 있음)이 아니라 회색으로 둔다 */
+.dh-go.done { color: var(--text-3); font-weight: 500; }
 
 /* ── 상태 배지를 그대로 필터로 쓰는 칩 ────────────────── */
 .chip-filters { display: flex; gap: 8px; flex-wrap: wrap; }

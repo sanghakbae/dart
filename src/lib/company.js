@@ -282,6 +282,9 @@ export function companyView(doc) {
     auditor: doc.latest?.auditor || null,
     docKind: doc.latest?.docKind || null,
     reportCount: doc.reportCount || (doc.reportIds || []).length,
+    // 실제로 올린 보고서의 ID 목록. 'DART 에서 가져오기' 에서 이미 받은 공시를
+    // 잠그는 데 쓴다 — years 로는 안 된다(전기 비교치로만 채워진 연도가 섞인다).
+    reportIds: doc.reportIds || [],
     uploadedAt: doc.updatedAt || 0,
     years: [...new Set(all.map((p) => p.year))].sort((a, b) => a - b),
     // 그 해를 '당기'로 보고한 보고서 없이, 다른 보고서의 전기 비교치로만 채워진 연도.

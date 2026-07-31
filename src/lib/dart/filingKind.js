@@ -12,3 +12,33 @@ export function filingKind(nm = '') {
   if (/(사업보고서|감사보고서)/.test(nm)) return 'annual'
   return 'other'
 }
+
+/**
+ * 공시 이름에서 누적 키의 앞부분("2025-FY")을 뽑는다.
+ *
+ * 이미 가져온 공시를 목록에서 잠그는 데 쓴다. 저장된 보고서의 ID 는
+ * `연도-기간종류-연결여부`(company.js reportIdOf)이므로, 연결여부를 뺀 앞부분이
+ * 같으면 그 기간은 이미 받아 둔 것이다 — 같은 기간을 다시 받으면 덮어쓰기만 한다.
+ *
+ * 기간종류는 괄호 안의 월로 가른다: (2025.12)=FY · (2025.06)=H1 · (2025.09)=Q3 · (2025.03)=Q1
+ * 이름에 '반기'·'분기' 가 있어도 월이 더 정확하다(분기보고서는 3월·9월 둘 다 쓴다).
+ *
+ * @returns {string|null} 예 "2025-FY"
+ */
+export function filingPeriodKey(nm = '') {
+  const m = /\((\d{4})[.\-/\s]*(\d{1,2})?\)/.exec(String(nm))
+  if (!m) return null
+  const year = Number(m[1])
+  if (!Number.isFinite(year)) return null
+  const month = m[2] ? Number(m[2]) : null
+
+  let type
+  if (month === 6) type = 'H1'
+  else if (month === 9) type = 'Q3'
+  else if (month === 3) type = 'Q1'
+  else if (month === 12 || month == null) type = 'FY'
+  // 12·6·9·3 이 아닌 결산월(예: 3월 결산법인의 사업보고서)은 이름으로 가른다.
+  else type = filingKind(nm) === 'annual' ? 'FY' : null
+
+  return type ? `${year}-${type}` : null
+}
