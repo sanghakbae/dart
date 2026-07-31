@@ -119,12 +119,21 @@ export default function PatentTab({ report }) {
               onClick={() => toggleStatus('pending')} active={status === 'pending'}
               hint="아직 등록되지 않은 건만 보기"
             />
-            {/* 연도는 아래 '연도별 출원' 막대가 맡는다. 여기서도 누르게 하면 한 줄에
-                켜진 타일이 둘이 되어(출원·공개 + 2026년) 한 묶음에서 두 개가 선택된
-                것처럼 보인다 — 실제로는 서로 다른 축인데 화면이 그걸 못 알려준다. */}
+            {/* 이 타일만 축이 다르다(상태가 아니라 연도). 그래서 앞의 셋과 동시에
+                켜질 수 있다 — 한 묶음에서 둘이 선택된 것으로 읽히지 않게 아래에
+                글로 밝혀 둔다. 아래 '연도별 출원' 막대와 같은 축이라 함께 켜진다. */}
             {stats.years[0] && (
-              <Tile label={`${stats.years[0][0]}년 출원`} value={stats.years[0][1]} suffix="건" />
+              <Tile
+                label={`${stats.years[0][0]}년 출원`} value={stats.years[0][1]} suffix="건"
+                onClick={() => toggleYear(stats.years[0][0])} active={year === stats.years[0][0]}
+                hint={`${stats.years[0][0]}년에 출원한 건만 보기`}
+              />
             )}
+          </div>
+          <div className="tnote">
+            타일을 누르면 아래 목록이 걸러집니다. <strong>상태</strong>(등록 · 출원·공개)와{' '}
+            <strong>연도</strong>는 서로 다른 조건이라 겹쳐 걸 수 있습니다 — 둘이 함께 켜지면
+            둘 다 만족하는 건만 남습니다.
           </div>
           {data.truncated && (
             <Callout tone="warn">
