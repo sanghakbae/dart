@@ -12,6 +12,14 @@ export function parseStatements(doc, meta) {
   let cur = null
   let missStreak = 0
   let basis = meta.basis === '연결' ? '연결' : '별도'
+  // 연결 본표·절 제목을 본 적이 있는가.
+  //
+  // 표 복원이 실패해도 이 사실은 남겨야 한다. 사업보고서는 연결과 별도를 나란히 싣는데,
+  // 연결 표만 복원에 실패하면(서식이 해마다 달라진다) 남은 별도 표만 보고 '별도' 로
+  // 판정해 버렸다 — 같은 회사 같은 서식인데 2024·2023은 연결, 2025·2022·2021은 별도로
+  // 갈렸다. 연결재무제표를 작성하는 회사는 그쪽이 주재무제표이므로, 제목이 있었다는
+  // 사실만으로도 연결로 본다.
+  let sawConsolidated = false
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i]
@@ -23,6 +31,11 @@ export function parseStatements(doc, meta) {
     else if (/별도\s*재무제표|^재무제표\s*$/.test(text)) basis = '별도'
 
     const head = detectSectionHead(text)
+    if (head?.basis === '연결') sawConsolidated = true
+    // 사업보고서의 절 제목("1. 연결재무제표")도 근거다. 본표 제목 줄이 표 밖에 있어
+    // 행으로 안 잡히는 서식이 있다. 제목 줄 그 자체만 인정한다 —
+    // 본문·주석의 "연결재무제표에 대한 …" 같은 언급은 이 정규식에 걸리지 않는다.
+    if (/^(?:\d{1,2}[.)])?연결재무제표$/.test(text.replace(/\s+/g, ''))) sawConsolidated = true
     if (head) {
       if (cur) blocks.push(finishBlock(cur))
       cur = {
@@ -84,7 +97,7 @@ export function parseStatements(doc, meta) {
   const periods = resolvePeriods(blocks, meta)
   for (const b of blocks) applyUnit(b, periods)
 
-  const resolvedBasis = resolveBasis(blocks, meta)
+  const resolvedBasis = resolveBasis(blocks, meta, sawConsolidated)
   const primary = pickPrimaryBlocks(blocks, { ...meta, basis: resolvedBasis })
   const values = collectValues(primary)
 
@@ -267,18 +280,21 @@ function applyUnit(block, periods) {
 }
 
 /**
- * 연결/별도 판정. 본문 언급("연결재무제표는 …")이 아니라 실제 본표 제목을 센다.
+ * 연결/별도 판정. 본문 언급("연결재무제표는 …")이 아니라 실제 본표·절 제목을 본다.
  * 별도 보고서의 주석에도 연결 이야기가 나오므로 텍스트 검색만으로는 뒤집힌다.
+ *
+ * 사업보고서에는 연결과 별도가 나란히 실린다. 계정 수로 겨루면 해마다 뒤집혔고
+ * (SK하이닉스가 2023년 연결, 2025년 별도로 갈렸다 — 같은 서식인데),
+ * '계정이 잡힌 블록' 만 보면 연결 표 복원이 실패한 해가 별도로 갈렸다.
+ * 연결재무제표를 작성하는 회사는 그쪽이 주재무제표다. 제목을 본 것만으로 연결로 본다.
+ *
+ * @param {boolean} sawConsolidated 연결 본표·절 제목을 본 적이 있는가
  */
-function resolveBasis(blocks, meta) {
+function resolveBasis(blocks, meta, sawConsolidated) {
+  // 계정이 하나도 안 잡힌 블록도 근거로 쓴다 — 제목이 있었다는 뜻이다.
+  if (sawConsolidated || blocks.some((b) => b.basis === '연결')) return '연결'
   const scored = blocks.filter((b) => b.matchCount > 0)
   if (!scored.length) return meta.basis || '별도'
-
-  // 사업보고서에는 연결과 별도가 나란히 실린다. 계정 수로 겨루면 해마다 뒤집혔다
-  // (SK하이닉스가 2023년 연결, 2025년 별도로 갈렸다 — 같은 서식인데).
-  // 연결재무제표를 작성하는 회사는 그쪽이 주재무제표이므로, 연결 본표가 제대로
-  // 잡혔으면 연결로 본다. 별도만 있는 보고서는 그대로 별도다.
-  if (scored.some((b) => b.basis === '연결')) return '연결'
   return '별도'
 }
 
