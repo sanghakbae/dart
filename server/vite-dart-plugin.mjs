@@ -6,12 +6,18 @@
 import { handleDart } from './dart-handler.mjs'
 import { handleNps } from './nps-handler.mjs'
 import { handleKipris } from './kipris-handler.mjs'
+import { handleNts } from './nts-handler.mjs'
+import { handleG2b } from './g2b-handler.mjs'
 import { handleHealth } from './health-handler.mjs'
 
 export function dartProxy(env = {}) {
   const dartKey = env.DART_API_KEY || process.env.DART_API_KEY || ''
   const npsKey = env.NPS_API_KEY || process.env.NPS_API_KEY || ''
   const kiprisKey = env.KIPRIS_API_KEY || process.env.KIPRIS_API_KEY || ''
+  // 국세청·조달청은 국민연금과 같은 공공데이터포털이다. 포털 인증키는 계정당 하나이므로
+  // 전용 키가 없으면 NPS_API_KEY 를 그대로 쓴다(두 서비스를 활용신청해 두었다면 그대로 된다).
+  const ntsKey = env.NTS_API_KEY || process.env.NTS_API_KEY || npsKey
+  const g2bKey = env.G2B_API_KEY || process.env.G2B_API_KEY || npsKey
 
   return {
     name: 'dart-proxy',
@@ -28,18 +34,30 @@ export function dartProxy(env = {}) {
       }
       server.middlewares.use(async (req, res, next) => {
         const isHealth = req.url === '/api/health' || req.url?.startsWith('/api/health?')
-        const isApi = ['/api/dart/', '/api/nps/', '/api/kipris/'].some((p) => req.url?.startsWith(p))
+        const isApi = ['/api/dart/', '/api/nps/', '/api/kipris/', '/api/nts/', '/api/g2b/'].some((p) =>
+          req.url?.startsWith(p)
+        )
         if (!isHealth && !isApi) return next()
         try {
           const url = `http://localhost${req.url}`
           const request = new Request(url, { method: req.method, headers: toHeaders(req.headers) })
           const response = isHealth
-            ? await handleHealth(request, { DART_API_KEY: dartKey, NPS_API_KEY: npsKey, KIPRIS_API_KEY: kiprisKey })
+            ? await handleHealth(request, {
+                DART_API_KEY: dartKey,
+                NPS_API_KEY: npsKey,
+                KIPRIS_API_KEY: kiprisKey,
+                NTS_API_KEY: ntsKey,
+                G2B_API_KEY: g2bKey,
+              })
             : req.url.startsWith('/api/nps/')
               ? await handleNps(request, npsKey)
               : req.url.startsWith('/api/kipris/')
                 ? await handleKipris(request, kiprisKey)
-                : await handleDart(request, dartKey)
+                : req.url.startsWith('/api/nts/')
+                  ? await handleNts(request, ntsKey)
+                  : req.url.startsWith('/api/g2b/')
+                    ? await handleG2b(request, g2bKey)
+                    : await handleDart(request, dartKey)
           if (!response) return next()
           res.statusCode = response.status
           response.headers.forEach((v, k) => res.setHeader(k, v))

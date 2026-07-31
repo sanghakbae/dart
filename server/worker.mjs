@@ -1,4 +1,4 @@
-// Cloudflare Worker — 배포본의 DART·국민연금 프록시.
+// Cloudflare Worker — 배포본의 외부 조회 프록시(DART·국민연금·KIPRIS·국세청·조달청).
 //
 // GitHub Pages 는 정적 호스팅이라 /api/* 를 처리할 수 없다. 그래서 같은 핸들러를
 // Worker 에 올려 배포본에서도 조회가 되게 한다(개발 서버는 vite-dart-plugin 이 같은 핸들러를 쓴다).
@@ -7,6 +7,11 @@
 //   wrangler secret put DART_API_KEY
 //   wrangler secret put NPS_API_KEY
 //   wrangler secret put KIPRIS_API_KEY
+//   wrangler secret put NTS_API_KEY     (국세청 사업자상태 — 공공데이터포털 디코딩 키)
+//   wrangler secret put G2B_API_KEY     (조달청 나라장터 — 공공데이터포털 디코딩 키)
+//
+// 국세청·조달청은 국민연금과 같은 공공데이터포털이다. 포털 인증키는 계정당 하나이므로,
+// 두 서비스를 활용신청해 두었다면 NPS_API_KEY 를 그대로 쓴다(전용 시크릿이 있으면 그걸 먼저 본다).
 //
 // 공개 URL 이므로 허용 오리진을 제한한다. 열어두면 아무 사이트나 이 프록시로
 // 우리 인증키 할당량을 소모할 수 있다.
@@ -14,6 +19,8 @@
 import { handleDart } from './dart-handler.mjs'
 import { handleNps } from './nps-handler.mjs'
 import { handleKipris } from './kipris-handler.mjs'
+import { handleNts } from './nts-handler.mjs'
+import { handleG2b } from './g2b-handler.mjs'
 import { handleHealth } from './health-handler.mjs'
 
 const ALLOWED = [
@@ -44,7 +51,14 @@ export default {
     // /health 는 Worker 자체가 살아 있는지 보는 용도다. 상류를 부르지 않는다.
     if (url.pathname === '/health') {
       return json(
-        { ok: true, dart: Boolean(env.DART_API_KEY), nps: Boolean(env.NPS_API_KEY) },
+        {
+          ok: true,
+          dart: Boolean(env.DART_API_KEY),
+          nps: Boolean(env.NPS_API_KEY),
+          kipris: Boolean(env.KIPRIS_API_KEY),
+          nts: Boolean(ntsKey(env)),
+          g2b: Boolean(g2bKey(env)),
+        },
         200,
         allowed ? { 'access-control-allow-origin': allowed } : {}
       )
@@ -54,7 +68,9 @@ export default {
     const isDart = url.pathname.startsWith('/api/dart/')
     const isNps = url.pathname.startsWith('/api/nps/')
     const isKipris = url.pathname.startsWith('/api/kipris/')
-    if (!isHealth && !isDart && !isNps && !isKipris) {
+    const isNts = url.pathname.startsWith('/api/nts/')
+    const isG2b = url.pathname.startsWith('/api/g2b/')
+    if (!isHealth && !isDart && !isNps && !isKipris && !isNts && !isG2b) {
       return json({ error: `알 수 없는 경로: ${url.pathname}` }, 404, {})
     }
 
@@ -80,7 +96,11 @@ export default {
       ? await handleNps(forwarded, env.NPS_API_KEY || '')
       : isKipris
         ? await handleKipris(forwarded, env.KIPRIS_API_KEY || '')
-        : await handleDart(forwarded, env.DART_API_KEY || '')
+        : isNts
+          ? await handleNts(forwarded, ntsKey(env))
+          : isG2b
+            ? await handleG2b(forwarded, g2bKey(env))
+            : await handleDart(forwarded, env.DART_API_KEY || '')
 
     if (!response) return json({ error: '처리할 수 없는 요청입니다.' }, 404, {})
     return scrub(response, env)
@@ -96,7 +116,7 @@ export default {
  */
 async function scrub(response, env) {
   if (response.status < 400) return response
-  const keys = [env.DART_API_KEY, env.NPS_API_KEY, env.KIPRIS_API_KEY].filter((k) => k && k.length >= 8)
+  const keys = secretsOf(env).filter((k) => k.length >= 8)
   if (!keys.length) return response
 
   // 본문을 읽는 순간 원본 Response 는 다시 쓸 수 없다. 지울 게 없더라도
@@ -121,6 +141,25 @@ async function scrub(response, env) {
   headers.delete('content-length')
   headers.delete('content-encoding')
   return new Response(out, { status: response.status, headers })
+}
+
+/**
+ * 국세청·조달청 키. 전용 시크릿이 없으면 국민연금 키를 쓴다 —
+ * 셋 다 공공데이터포털이고, 포털 인증키는 계정당 하나다.
+ */
+function ntsKey(env) {
+  return env.NTS_API_KEY || env.NPS_API_KEY || ''
+}
+
+function g2bKey(env) {
+  return env.G2B_API_KEY || env.NPS_API_KEY || ''
+}
+
+/** 응답에서 지워야 할 인증키 전부. */
+function secretsOf(env) {
+  return [env.DART_API_KEY, env.NPS_API_KEY, env.KIPRIS_API_KEY, env.NTS_API_KEY, env.G2B_API_KEY]
+    .filter(Boolean)
+    .map(String)
 }
 
 /** 검증에 실패한 Origin 은 지워서 핸들러가 '*' 로 응답하지 않게 한다 */

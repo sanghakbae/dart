@@ -15,11 +15,12 @@ const req = (path, origin) => new Request(`https://dart-proxy.example.workers.de
 test('health — 키 설정 여부를 알려준다', async () => {
   const r = await w.fetch(req('/health'), {})
   eq(r.status, 200)
-  eq(await r.json(), { ok: true, dart: false, nps: false })
+  eq(await r.json(), { ok: true, dart: false, nps: false, kipris: false, nts: false, g2b: false })
 })
 test('health — 키가 있으면 true', async () => {
   const r = await w.fetch(req('/health'), { DART_API_KEY: 'x', NPS_API_KEY: 'y' })
-  eq((await r.json()), { ok: true, dart: true, nps: true })
+  // 국세청·조달청은 전용 키가 없으면 국민연금 키를 쓴다 — 그래서 함께 true 다.
+  eq(await r.json(), { ok: true, dart: true, nps: true, kipris: false, nts: true, g2b: true })
 })
 test('모르는 경로는 404', async () => {
   eq((await w.fetch(req('/nope'), {})).status, 404)
@@ -76,6 +77,27 @@ test('오류 응답에서 인증키를 지운다', async () => {
   const text = await r.text()
   if (text.includes(key)) throw new Error('인증키가 그대로 나갔다')
   if (!text.includes('<KEY>')) throw new Error(`가려진 흔적이 없다: ${text}`)
+})
+// 새 출처를 붙일 때마다 worker 라우팅에 빠뜨리는 일이 잦다. 경로가 핸들러까지
+// 닿는지(=키 검사 500 까지 가는지) 확인해 둔다. 404 면 라우팅이 빠진 것이다.
+test('국세청·조달청·상표·디자인 경로가 핸들러까지 닿는다', async () => {
+  for (const path of [
+    '/api/nts/status?bizNo=1234567890',
+    '/api/g2b/awards?bizNo=1234567890',
+    '/api/kipris/trademarks?applicant=x',
+    '/api/kipris/designs?applicant=x',
+  ]) {
+    const r = await w.fetch(req(path, 'https://dart.sanghak.kr'), {})
+    eq(r.status, 500, `${path} → ${r.status}`) // 키가 없어 500 (라우팅 404 가 아님)
+  }
+})
+test('국세청·조달청 키가 없으면 국민연금 키를 쓴다', async () => {
+  // 키 검사를 통과해 파라미터 검사까지 가면(400) 키가 넘어간 것이다.
+  const env = { NPS_API_KEY: 'n'.repeat(40) }
+  const nts = await w.fetch(req('/api/nts/status', 'https://dart.sanghak.kr'), env)
+  eq(nts.status, 400)
+  const g2b = await w.fetch(req('/api/g2b/awards', 'https://dart.sanghak.kr'), env)
+  eq(g2b.status, 400)
 })
 test('/api/health 도 오리진 제한을 받는다', async () => {
   const r = await w.fetch(req('/api/health', 'https://evil.example.com'), { DART_API_KEY: 'x' })

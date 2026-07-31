@@ -7,6 +7,9 @@
   // 인증키는 코드·설정에 넣지 않는다. 시크릿으로만 둔다:
   //   wrangler secret put DART_API_KEY
   //   wrangler secret put NPS_API_KEY
+  //   wrangler secret put KIPRIS_API_KEY
+  //   wrangler secret put NTS_API_KEY   (국세청 — 없으면 NPS_API_KEY 를 쓴다)
+  //   wrangler secret put G2B_API_KEY   (조달청 — 없으면 NPS_API_KEY 를 쓴다)
   //
   // 허용 오리진 추가가 필요하면(미리보기 도메인 등) 쉼표로 구분해 넣는다.
   // 기본 허용은 server/worker.mjs 의 ALLOWED 목록.

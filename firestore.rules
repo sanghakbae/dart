@@ -93,6 +93,20 @@ service cloud.firestore {
         allow delete: if signedIn();
       }
 
+      // 상표 · 디자인(KIPRIS) · 사업자상태(국세청) · 조달실적(나라장터) 캐시.
+      // 위 셋과 같은 성격이다 — 공개 API 결과이고 하루에 한 번 갱신한다.
+      // src/lib/storage.js 의 EXTERNAL_SUBS 와 같은 목록을 유지해야 한다.
+      match /{cache}/{docId} {
+        allow read: if signedIn()
+          && cache in ['trademarks', 'designs', 'bizStatus', 'procurement'];
+        allow create, update: if signedIn()
+          && cache in ['trademarks', 'designs', 'bizStatus', 'procurement']
+          && request.resource.data.keys().hasAll(['fetchedAt'])
+          && request.resource.data.fetchedAt is int;
+        allow delete: if signedIn()
+          && cache in ['trademarks', 'designs', 'bizStatus', 'procurement'];
+      }
+
       match /reports/{reportId} {
         allow read: if signedIn();
         allow delete: if signedIn();

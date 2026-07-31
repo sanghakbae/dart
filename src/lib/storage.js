@@ -363,8 +363,10 @@ export { FUNDING_TTL }
  * 계산 방식을 고쳐도 하루 동안 옛 값이 그대로 나갔다 — 특허 건수를 정확 일치로
  * 바꿨는데 화면에는 계속 22,608건이 떴다. 버전이 다르면 캐시를 낡은 것으로 본다.
  * 저장 형식이나 집계 방식을 바꿀 때마다 올린다.
+ *
+ * 3 — 특허 항목의 `ipc` 를 `classes` 로 바꿨다(상표·디자인과 표 코드를 나눠 쓴다).
  */
-const CACHE_V = 2
+const CACHE_V = 3
 
 // ── 특허 캐시 ────────────────────────────────────────────────
 // KIPRIS 무료 한도가 월 1,000회다. 하루 캐시로 충분히 그 안에 든다.
@@ -397,6 +399,71 @@ export async function savePatents(companyKey, payload) {
 
 export { PATENT_TTL }
 
+// ── 그 밖의 외부 조회 캐시 ────────────────────────────────────
+/**
+ * 상표 · 디자인 · 사업자상태 · 조달실적은 저장 방식이 똑같다(하위 컬렉션의 latest 문서 하나,
+ * 하루 캐시, 빈 결과는 낡은 것으로 본다). 넷을 각각 손으로 쓰면 같은 코드가 네 벌 생기고
+ * 한 곳만 고치는 실수가 난다 — 고용·자본조달·특허를 그렇게 세 벌 썼다.
+ *
+ * @param {string} sub      하위 컬렉션 이름(firestore.rules 에도 같은 이름을 열어야 한다)
+ * @param {Function} isEmpty (저장된 값) => 내용이 없는가. 빈 값이 하루 굳는 것을 막는다.
+ */
+function remoteCache(sub, isEmpty) {
+  const ref = (ck) => doc(db, COL, ck, sub, 'latest')
+  return {
+    async load(companyKey) {
+      if (!usesFirestore || !companyKey) return null
+      try {
+        const snap = await getDoc(ref(companyKey))
+        if (!snap.exists()) return null
+        const data = snap.data()
+        const outdated = data.v !== CACHE_V
+        return { ...data, stale: isEmpty(data) || outdated || Date.now() - (data.fetchedAt || 0) > REMOTE_TTL }
+      } catch {
+        return null
+      }
+    },
+    async save(companyKey, payload) {
+      if (!usesFirestore || !companyKey) return { saved: false, warning: null }
+      try {
+        await setDoc(ref(companyKey), sanitize({ ...payload, v: CACHE_V, fetchedAt: Date.now() }))
+        return { saved: true, warning: null }
+      } catch (e) {
+        return { saved: false, warning: firestoreHint(e) }
+      }
+    },
+  }
+}
+
+const REMOTE_TTL = 24 * 60 * 60 * 1000
+
+/**
+ * 외부 조회 캐시 하위 컬렉션 전부. 회사를 지울 때 함께 지운다 —
+ * 새 캐시를 더하면서 여기에 넣는 것을 잊으면, 회사를 지웠다가 다시 올렸을 때
+ * 예전 값이 되살아난다. firestore.rules 에도 같은 목록이 있다.
+ */
+const EXTERNAL_SUBS = ['employment', 'funding', 'patents', 'trademarks', 'designs', 'bizStatus', 'procurement']
+
+const emptyList = (key) => (data) => !Array.isArray(data[key]) || data[key].length === 0
+
+const trademarkCache = remoteCache('trademarks', emptyList('trademarks'))
+const designCache = remoteCache('designs', emptyList('designs'))
+// 사업자 상태는 목록이 아니다. 번호를 못 읽은 응답만 낡은 것으로 본다
+// (폐업이든 계속이든 값이 있으면 하루 동안 다시 부를 이유가 없다).
+const bizStatusCache = remoteCache('bizStatus', (data) => !data.bizNo)
+const procurementCache = remoteCache('procurement', emptyList('awards'))
+
+export const loadTrademarks = (ck) => trademarkCache.load(ck)
+export const saveTrademarks = (ck, v) => trademarkCache.save(ck, v)
+export const loadDesigns = (ck) => designCache.load(ck)
+export const saveDesigns = (ck, v) => designCache.save(ck, v)
+export const loadBizStatus = (ck) => bizStatusCache.load(ck)
+export const saveBizStatus = (ck, v) => bizStatusCache.save(ck, v)
+export const loadProcurement = (ck) => procurementCache.load(ck)
+export const saveProcurement = (ck, v) => procurementCache.save(ck, v)
+
+export { REMOTE_TTL }
+
 
 export async function loadContent(companyKey, reportId) {
   if (!usesFirestore) return null
@@ -428,9 +495,9 @@ export async function deleteCompany(companyKey) {
     // 관문을 통과했으면 하위도 같은 권한으로 지워진다. 중간에 실패해도
     // 회사 문서가 이미 없어 목록에는 안 보이므로, 남은 건 조용히 넘긴다.
     try {
-      // 외부 조회 캐시(고용·투자·특허)도 같이 지운다. 남겨 두면 같은 회사를
+      // 외부 조회 캐시도 같이 지운다. 남겨 두면 같은 회사를
       // 다시 올렸을 때 예전에 받아 둔 값이 되살아난다.
-      for (const sub of ['employment', 'funding', 'patents']) {
+      for (const sub of EXTERNAL_SUBS) {
         const cached = await getDocs(collection(db, COL, companyKey, sub))
         await commitAll(cached.docs.map((d) => d.ref))
       }

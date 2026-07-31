@@ -27,6 +27,7 @@ import ChecklistTab from './components/tabs/ChecklistTab'
 import EmploymentTab from './components/tabs/EmploymentTab'
 import FundingTab from './components/tabs/FundingTab'
 import PatentTab from './components/tabs/PatentTab'
+import BusinessTab from './components/tabs/BusinessTab'
 import NotesTab from './components/tabs/NotesTab'
 import RawTab from './components/tabs/RawTab'
 import { fileSize } from './lib/format'
@@ -40,7 +41,9 @@ const TABS = [
   { key: 'valuation', label: '기업가치' },
   { key: 'employment', label: '고용' },
   { key: 'funding', label: '투자' },
-  { key: 'patent', label: '특허' },
+  // 키는 'patent' 그대로 둔다 — 주소(#/co/…/patent/…)에 이미 쓰인 값이라 바꾸면 북마크가 깨진다.
+  { key: 'patent', label: '지식재산' },
+  { key: 'business', label: '사업자·조달' },
   { key: 'checklist', label: '점검' },
   { key: 'notes', label: '주석' },
   { key: 'raw', label: '원문' },
@@ -589,6 +592,7 @@ export default function App() {
                   {tab === 'employment' && <EmploymentTab report={mergedActive} timeline={timeline} />}
                   {tab === 'funding' && <FundingTab report={mergedActive} />}
                   {tab === 'patent' && <PatentTab report={mergedActive} />}
+                  {tab === 'business' && <BusinessTab report={mergedActive} />}
                   {tab === 'checklist' && (
                     <ChecklistTab report={mergedActive} timeline={timeline} notes={activeContent?.notes} loading={contentLoading} />
                   )}

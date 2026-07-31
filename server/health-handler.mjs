@@ -12,6 +12,10 @@
 // 화면 상단에 그대로 띄우기 때문에 응답은 작고 빠르게 유지한다.
 
 import { fetchUpstream } from './dart-handler.mjs'
+// 국세청·조달청은 URL 과 경로 후보를 핸들러가 갖고 있다. 여기서 다시 적으면
+// 한쪽만 고쳐 놓고 '정상' 을 띄우게 되므로 핸들러의 점검 함수를 그대로 부른다.
+import { probeNts } from './nts-handler.mjs'
+import { probeG2b } from './g2b-handler.mjs'
 
 // 국민연금은 평소에도 10초 안팎이 걸린다. 짧게 잡으면 멀쩡한 API 가 죽은 것으로 보인다.
 const TIMEOUT = 25_000
@@ -127,7 +131,7 @@ async function checkKipris(key) {
 
 /**
  * @param {Request} req
- * @param {{DART_API_KEY?:string, NPS_API_KEY?:string, KIPRIS_API_KEY?:string}} keys
+ * @param {{DART_API_KEY?:string, NPS_API_KEY?:string, KIPRIS_API_KEY?:string, NTS_API_KEY?:string, G2B_API_KEY?:string}} keys
  * @returns {Promise<Response|null>}
  */
 export async function handleHealth(req, keys = {}) {
@@ -142,11 +146,16 @@ export async function handleHealth(req, keys = {}) {
   }
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors })
 
-  const secrets = [keys.DART_API_KEY, keys.NPS_API_KEY, keys.KIPRIS_API_KEY].filter(Boolean)
-  const [dart, nps, kipris] = await Promise.all([
+  // 국세청·조달청은 국민연금과 같은 공공데이터포털이다. 전용 키가 없으면 그 키를 쓴다.
+  const ntsKey = keys.NTS_API_KEY || keys.NPS_API_KEY
+  const g2bKey = keys.G2B_API_KEY || keys.NPS_API_KEY
+  const secrets = [keys.DART_API_KEY, keys.NPS_API_KEY, keys.KIPRIS_API_KEY, ntsKey, g2bKey].filter(Boolean)
+  const [dart, nps, kipris, nts, g2b] = await Promise.all([
     timed(() => checkDart(keys.DART_API_KEY), secrets),
     timed(() => checkNps(keys.NPS_API_KEY), secrets),
     timed(() => checkKipris(keys.KIPRIS_API_KEY), secrets),
+    timed(() => probeNts(ntsKey), secrets),
+    timed(() => probeG2b(g2bKey), secrets),
   ])
 
   // short 는 좁은 화면용 축약 라벨이다(헤더를 한 줄에 담아야 한다).
@@ -154,8 +163,10 @@ export async function handleHealth(req, keys = {}) {
     { id: 'dart', label: 'DART', short: 'DART', ...dart },
     { id: 'nps', label: '국민연금', short: '연금', ...nps },
     { id: 'kipris', label: 'KIPRIS', short: '특허', ...kipris },
+    { id: 'nts', label: '국세청', short: '국세', ...nts },
+    { id: 'g2b', label: '나라장터', short: '조달', ...g2b },
   ]
-  // 선택 서비스(KIPRIS)는 없더라도, 느려서 못 본 것도 전체 실패로 보지 않는다.
+  // 선택 서비스(KIPRIS·국세청·나라장터)는 없더라도, 느려서 못 본 것도 전체 실패로 보지 않는다.
   const ok = services.filter((s) => !s.optional).every((s) => s.ok || s.slow)
   return json({ ok, checkedAt: Date.now(), services }, 200, cors)
 }

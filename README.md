@@ -1,8 +1,9 @@
 # 파인더 · Corp Finder (dart.sanghak.kr)
 
-한 회사의 **감사보고서 · 공시 · 고용 · 투자 · 특허**를 한 화면에 모은다.
+한 회사의 **감사보고서 · 공시 · 고용 · 투자 · 지식재산 · 사업자상태 · 공공조달**을 한 화면에 모은다.
 감사보고서를 올리면 감사의견 · 재무제표 · 주석 · 재무비율 · 전년 대비 추이를 자동으로 읽고,
-DART · 국민연금 · KIPRIS 를 같은 회사로 묶어 고용 추이 · 자본조달 이력 · 특허 현황까지 붙인다.
+DART · 국민연금 · KIPRIS · 국세청 · 조달청을 같은 회사로 묶어 고용 추이 · 자본조달 이력 ·
+특허·상표·디자인 · 폐업 여부 · 공공조달 낙찰 실적까지 붙인다.
 
 파싱 결과와 추출 원문 전체를 DB에 저장하므로, 분석 로직이 놓친 내용도 원문 탭에서 그대로 확인할 수 있다.
 
@@ -11,9 +12,19 @@ DART · 국민연금 · KIPRIS 를 같은 회사로 묶어 고용 추이 · 자�
 - 외부 조회: Cloudflare Worker 프록시 (`server/worker.mjs`) — 인증키는 시크릿에만 둔다
 - 배포: GitHub Pages (`dart.sanghak.kr`)
 
-외부 데이터(고용·투자·특허)는 **화면을 열 때 자동으로 받지 않는다.** 저장된 것만 읽고,
-새로 받는 것은 '받아오기' 를 눌렀을 때뿐이다 — KIPRIS 무료 한도가 월 1,000회이고
-국민연금은 한 회사에 25회 안팎이 든다. 대신 언제 받은 값인지 화면에 늘 띄운다.
+외부 데이터는 **화면을 열 때 자동으로 받지 않는다.** 저장된 것만 읽고,
+새로 받는 것은 '받아오기' 를 눌렀을 때뿐이다 — KIPRIS 무료 한도가 월 1,000회(특허·상표·디자인이
+나눠 쓴다)이고, 국민연금은 한 회사에 25회 안팎, 조달청은 조회 기간이 1개월 제한이라
+개월 수만큼 부른다. 대신 언제 받은 값인지 화면에 늘 띄운다.
+
+예외는 국세청 사업자상태 하나다 — 한 회사에 1회로 끝나므로 회사를 처음 등록할 때 함께 받아 둔다.
+
+| 탭 | 출처 | 무엇을 |
+|---|---|---|
+| 고용 | 국민연금 가입 사업장 | 월별 가입자 수 추이 · 추정 급여 |
+| 투자 | DART 발행·거래소 공시 | 유상증자 · CB · BW · 전환청구 이력 |
+| 지식재산 | KIPRIS Plus | 특허·실용신안 · 상표 · 디자인 (출원인명 정확 일치) |
+| 사업자·조달 | 국세청 · 조달청 나라장터 | 계속·휴업·폐업과 과세유형 · 공공조달 낙찰 건수·금액 |
 
 화면 흐름은 **업로드 → DB 누적 → 회사 리스트 → 회사 선택 → 분석** 이다.
 누적 단위는 **회사 × 연도**이며, 같은 보고서를 다시 올려도 중복으로 쌓이지 않는다.
@@ -97,10 +108,21 @@ cp .env.example .env
 |---|---|---|
 | `DART_API_KEY` | DART 원문 직접 가져오기 ([opendart.fss.or.kr](https://opendart.fss.or.kr)) | 가져오기 비활성 |
 | `NPS_API_KEY` | 국민연금 고용 정보 ([data.go.kr](https://www.data.go.kr)) | 고용 탭 비활성 |
+| `KIPRIS_API_KEY` | 특허·상표·디자인 ([plus.kipris.or.kr](https://plus.kipris.or.kr)) | 지식재산 탭 비활성 |
+| `NTS_API_KEY` | 국세청 사업자등록 상태 (data.go.kr) | 없으면 `NPS_API_KEY` 사용 |
+| `G2B_API_KEY` | 조달청 나라장터 낙찰정보 (data.go.kr) | 없으면 `NPS_API_KEY` 사용 |
 | `VITE_FIREBASE_*` | 다른 Firebase 프로젝트를 쓸 때만 | `dart-40a5c` 기본값 |
 | `VITE_PROXY_BASE` | 배포본이 가리킬 Worker 주소 | 개발 서버는 같은 오리진 사용 |
 
-`DART_API_KEY`·`NPS_API_KEY` 는 `VITE_` 접두사가 없어 클라이언트 번들에 들어가지 않는다.
+인증키는 모두 `VITE_` 접두사가 없어 클라이언트 번들에 들어가지 않는다.
+
+국세청·조달청은 국민연금과 같은 공공데이터포털이고 **인증키는 계정당 하나**다. 두 서비스를
+활용신청해 두었다면 전용 변수를 비워 둬도 `NPS_API_KEY` 로 동작한다. 넣을 때는 **디코딩 키**를
+쓴다 — 인코딩 키를 넣으면 이중 인코딩되어 `SERVICE_KEY_IS_NOT_REGISTERED_ERROR` 로 떨어진다.
+
+KIPRIS 는 **특허·상표·디자인을 각각 활용신청**해야 한다. 신청하지 않은 서비스는 키가 있어도
+`resultCode 31` 로 응답하는데 HTTP 200 이라 화면에서는 '데이터 없음' 처럼 보인다 —
+`/api/health` 가 이 코드를 구분해 알려준다.
 
 **로그인(OAuth)은 쓰지 않는다.** 업로드하면 곧바로 회사 단위로 누적된다:
 
@@ -141,14 +163,23 @@ npm test
 `tests/fixtures/hanbit-2024.txt` (가상 회사 감사보고서)로 금액 정규화, 표지 메타, 감사의견 판정,
 표 복원, 단위 환산, 주석 분리, 비율 계산, 다년 추이 병합을 검증한다.
 
-## DART · 국민연금 조회 (프록시)
+## 외부 조회 (프록시)
 
-인증키를 브라우저에 내려보내지 않기 위해 조회는 프록시를 거친다. 핸들러는
-`server/dart-handler.mjs`·`server/nps-handler.mjs` 하나뿐이고, 개발 서버와 배포본이 같은 코드를 쓴다.
+인증키를 브라우저에 내려보내지 않기 위해 조회는 프록시를 거친다. 핸들러는 출처마다 하나뿐이고
+(`dart` · `nps` · `kipris` · `nts` · `g2b`), 개발 서버와 배포본이 같은 코드를 쓴다.
+
+| 경로 | 출처 | 핸들러 |
+|---|---|---|
+| `/api/dart/*` | DART OpenAPI | `server/dart-handler.mjs` |
+| `/api/nps/*` | 국민연금 가입 사업장 | `server/nps-handler.mjs` |
+| `/api/kipris/{patents,trademarks,designs}` | KIPRIS Plus | `server/kipris-handler.mjs` |
+| `/api/nts/status` | 국세청 사업자등록 상태 | `server/nts-handler.mjs` |
+| `/api/g2b/awards` | 조달청 나라장터 낙찰정보 | `server/g2b-handler.mjs` |
+| `/api/health` | 위 전부를 실제로 한 번씩 불러 본 상태 | `server/health-handler.mjs` |
 
 | 환경 | 처리 주체 | 키 위치 |
 |---|---|---|
-| 개발 (`npm run dev`) | Vite 플러그인 `server/vite-dart-plugin.mjs` | `.env` 의 `DART_API_KEY` · `NPS_API_KEY` |
+| 개발 (`npm run dev`) | Vite 플러그인 `server/vite-dart-plugin.mjs` | `.env` |
 | 배포 (GitHub Pages) | Cloudflare Worker `server/worker.mjs` | Worker 시크릿 |
 
 GitHub Pages 는 정적 호스팅이라 `/api/*` 를 처리할 수 없다. 그래서 배포본은 Worker 를 가리킨다.
@@ -157,6 +188,9 @@ GitHub Pages 는 정적 호스팅이라 `/api/*` 를 처리할 수 없다. 그�
 # 1) 키를 Worker 시크릿에 넣는다 (값은 프롬프트로 입력 — 명령줄에 남기지 않는다)
 npx wrangler secret put DART_API_KEY
 npx wrangler secret put NPS_API_KEY
+npx wrangler secret put KIPRIS_API_KEY
+npx wrangler secret put NTS_API_KEY   # 없으면 NPS_API_KEY 를 쓴다
+npx wrangler secret put G2B_API_KEY   # 없으면 NPS_API_KEY 를 쓴다
 
 # 2) 배포
 npx wrangler deploy          # → https://dart-proxy.<계정>.workers.dev
