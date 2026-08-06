@@ -94,6 +94,14 @@ async function checkNps(key) {
   const res = await withTimeout(url)
   const text = await res.text()
   if (text.trim() === 'Unauthorized') return { ok: false, detail: '인증키가 게이트웨이에 등록되지 않았습니다' }
+  // 게이트웨이 오류는 공단 형식이 아니라 OpenAPI_ServiceResponse 로 온다.
+  // 그걸 모르면 아래에서 resultCode 를 못 찾아 "200" 만 적힌 쓸모없는 문구가 나간다.
+  if (text.includes('OpenAPI_ServiceResponse')) {
+    const err = /<?errMsg>?"?\s*:?\s*"?([A-Z_]+)/.exec(text)?.[1] || 'UNKNOWN_ERROR'
+    // 공단 서버가 늦은 것은 키·설정 문제가 아니다. 빨간 칩으로 띄우면 장애로 읽힌다.
+    if (err === 'SERVICETIMEOUT_ERROR') return { ok: false, slow: true, detail: '공단 서버가 제때 응답하지 않았습니다' }
+    return { ok: false, detail: err }
+  }
   let d
   try {
     d = JSON.parse(text)

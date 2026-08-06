@@ -32,15 +32,60 @@ function json(body, status = 200, extra = {}) {
   return new Response(JSON.stringify(body), { status, headers: { ...JSON_HEADERS, ...extra } })
 }
 
-async function call(op, params, key) {
+// 공단 응답이 10초를 넘기는 일이 흔하다. 끊지 않으면 호출 하나가 화면을 붙잡는다.
+const CALL_TIMEOUT = 20_000
+// 게이트웨이가 간헐적으로 SERVICETIMEOUT_ERROR(503)를 던진다. 한 번 더 물어보면 대개 온다.
+// 시계열은 월마다 두 번씩 부르므로(13개월 = 26회) 재시도가 없으면 한 번의 딸꾹질에 통째로 실패한다.
+const RETRY_MS = [500, 1500]
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+/**
+ * data.go.kr 게이트웨이 오류.
+ *
+ * 공단 응답 형식(response.header.resultCode)이 아니라 게이트웨이가 감싼
+ * OpenAPI_ServiceResponse.cmmMsgHeader.errMsg 로 온다. 이걸 안 보면 200 으로 온
+ * 오류가 "항목 없음" 으로 조용히 넘어가, 멀쩡한 회사가 '사업장을 찾지 못했습니다'
+ * 로 보인다. 상태코드도 503 일 때가 있고 200 일 때가 있어 본문으로 판정한다.
+ */
+function gatewayError(text) {
+  if (!text.includes('OpenAPI_ServiceResponse')) return null
+  return /<?errMsg>?"?\s*:?\s*"?([A-Z_]+)/.exec(text)?.[1] || 'UNKNOWN_ERROR'
+}
+
+const GATEWAY_HINT = {
+  SERVICETIMEOUT_ERROR: '공단 서버가 제때 응답하지 않았습니다. 잠시 뒤 다시 시도해 주세요.',
+  LIMITED_NUMBER_OF_SERVICE_REQUESTS_EXCEEDS_ERROR: '오늘 호출 한도를 다 썼습니다(개발계정 일 1,000회).',
+  SERVICE_ACCESS_DENIED_ERROR: '이 서비스에 활용신청이 되지 않은 인증키입니다.',
+  SERVICE_KEY_IS_NOT_REGISTERED_ERROR: '게이트웨이에 등록되지 않은 인증키입니다.',
+}
+
+async function call(op, params, key, attempt = 0) {
   const url = new URL(`${NPS}/${op}`)
   url.searchParams.set('serviceKey', key)
   url.searchParams.set('dataType', 'json')
   for (const [k, v] of Object.entries(params)) if (v != null && v !== '') url.searchParams.set(k, v)
 
-  const res = await fetch(url)
-  const text = await res.text()
+  const retry = () => sleep(RETRY_MS[attempt]).then(() => call(op, params, key, attempt + 1))
+
+  let res
+  let text
+  try {
+    res = await fetch(url, { signal: AbortSignal.timeout(CALL_TIMEOUT) })
+    text = await res.text()
+  } catch (e) {
+    // 끊김·시간초과도 대개 일시적이다.
+    if (attempt < RETRY_MS.length) return retry()
+    throw new Error(`국민연금 API 에 연결하지 못했습니다 (${op}): ${String(e?.message || e).slice(0, 80)}`)
+  }
+
+  const gw = gatewayError(text)
+  // 일시적인 것만 다시 부른다. 한도 초과·미등록 키는 다시 불러도 같다.
+  const transient = res.status >= 500 || gw === 'SERVICETIMEOUT_ERROR'
+  if (transient && attempt < RETRY_MS.length) return retry()
+
+  if (gw) throw new Error(`국민연금 ${gw}: ${GATEWAY_HINT[gw] || '게이트웨이 오류입니다.'}`)
   if (!res.ok) throw new Error(`국민연금 API ${res.status}: ${text.slice(0, 120)}`)
+
   // 인증 실패 등은 JSON 이 아니라 평문("Unauthorized")으로 온다.
   let body
   try {
@@ -92,9 +137,18 @@ async function searchWorkplaces(name, key) {
   // 표기가 달라 본사를 놓치는 일이 많다. 변형까지 훑어 합친다.
   const variants = nameVariants(name)
   const rows = []
+  // 표기 하나가 실패했다고 전부 포기하지 않는다 — 상류가 간헐적으로 죽는데,
+  // '주식회사 무하유' 가 503 이라고 '무하유' 까지 못 찾을 이유는 없다.
+  // 다만 전부 실패했다면 '사업장 없음' 이 아니라 오류로 알려야 한다.
+  let lastError = null
   for (const v of variants) {
-    rows.push(...(await call('getBassInfoSearchV2', { wkplNm: v, numOfRows: 100, pageNo: 1 }, key)))
+    try {
+      rows.push(...(await call('getBassInfoSearchV2', { wkplNm: v, numOfRows: 100, pageNo: 1 }, key)))
+    } catch (e) {
+      lastError = e
+    }
   }
+  if (!rows.length && lastError) throw lastError
   const byPlace = new Map() // 사업장(사업자번호+주소) → { name, months: [{ym, seq}] }
   for (const r of rows) {
     const id = `${r.bzowrRgstNo}|${r.wkplRoadNmDtlAddr || ''}`
