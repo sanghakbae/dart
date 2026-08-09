@@ -86,7 +86,9 @@ export default {
     const keys = await resolveKeys(env)
 
     // /api/health 는 상류를 실제로 한 번씩 불러 본 결과를 준다(화면 상단 상태 칩).
-    if (isHealth) return handleHealth(forwarded, keys)
+    // 국민연금은 Cloudflare 에서 호출이 막혀 있다(한국 IP 만 허용).
+    // 여기서 점검해 봐야 늘 실패라, '이 환경에서는 사용 불가' 로 알린다.
+    if (isHealth) return handleHealth(forwarded, keys, { skip: ['nps'] })
 
     const response = isNps
       ? await handleNps(forwarded, keys.NPS_API_KEY)

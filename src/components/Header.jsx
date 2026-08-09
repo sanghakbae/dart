@@ -27,8 +27,12 @@ function ApiHealth() {
   // 평소에는 점 하나로 줄인다. 상태는 문제가 있을 때만 알면 되는 정보인데,
   // 서비스마다 칩을 띄우면 헤더의 절반을 진단 정보가 차지한다.
   const services = health?.services || []
-  const down = services.filter((s) => !s.ok && !s.optional)
-  const slow = services.filter((s) => s.ok && s.slow)
+  // 이 환경에서 아예 부를 수 없는 것(배포본의 국민연금)은 고장도 정상도 아니다.
+  // 초록으로 칠하면 되는 줄 알고, 빨갛게 칠하면 멀쩡한 배포본이 장애로 보인다.
+  const off = services.filter((s) => s.unavailable)
+  const live = services.filter((s) => !s.unavailable)
+  const down = live.filter((s) => !s.ok && !s.optional)
+  const slow = live.filter((s) => s.ok && s.slow)
   const tone = down.length ? 'critical' : slow.length ? 'warn' : 'good'
 
   return (
@@ -38,11 +42,19 @@ function ApiHealth() {
         className={`api-pill api-${tone}`}
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        title={down.length ? `${down.map((s) => s.label).join(', ')} 이상` : '외부 API 정상'}
+        title={
+          down.length
+            ? `${down.map((s) => s.label).join(', ')} 이상`
+            : off.length
+              ? `${off.map((s) => s.label).join(', ')} 은 이 서버에서 쓸 수 없습니다`
+              : '외부 API 정상'
+        }
       >
         <i className="dot" aria-hidden="true" />
         <span className="hide-sm">
-          {down.length ? `API ${down.length}건 이상` : `API ${services.length}개 정상`}
+          {down.length
+            ? `API ${down.length}건 이상`
+            : `API ${live.length}개 정상${off.length ? ` · ${off.length}개 미사용` : ''}`}
         </span>
       </button>
 
@@ -55,7 +67,12 @@ function ApiHealth() {
           <ul>
             {services.map((s) => (
               <li key={s.id}>
-                <Badge tone={s.ok ? 'good' : s.slow ? 'warn' : s.optional ? 'muted' : 'critical'} dot>
+                <Badge
+                  tone={
+                    s.unavailable ? 'muted' : s.ok ? 'good' : s.slow ? 'warn' : s.optional ? 'muted' : 'critical'
+                  }
+                  dot
+                >
                   {s.label}
                 </Badge>
                 <span className="api-detail">{s.detail}</span>

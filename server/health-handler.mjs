@@ -138,7 +138,12 @@ async function checkKipris(key) {
  * @param {{DART_API_KEY?:string, NPS_API_KEY?:string, KIPRIS_API_KEY?:string, NTS_API_KEY?:string}} keys
  * @returns {Promise<Response|null>}
  */
-export async function handleHealth(req, keys = {}) {
+/**
+ * @param {Request} req
+ * @param {object} keys  인증키 묶음
+ * @param {{skip?: string[]}} [opts]  이 환경에서 부를 수 없는 서비스
+ */
+export async function handleHealth(req, keys = {}, opts = {}) {
   const url = new URL(req.url)
   if (url.pathname !== '/api/health') return null
 
@@ -150,12 +155,20 @@ export async function handleHealth(req, keys = {}) {
   }
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors })
 
-  const secrets = [keys.DART_API_KEY, keys.NPS_API_KEY, keys.KIPRIS_API_KEY, keys.NTS_API_KEY].filter(Boolean)
+  const secrets = [keys.DART_API_KEY, keys.NPS_API_KEY, keys.KIPRIS_API_KEY].filter(Boolean)
+
+  // 이 환경에서 아예 부를 수 없는 서비스는 '고장' 이 아니다.
+  // 국민연금(data.go.kr)은 한국 IP 만 받아 Cloudflare 에서는 호출 자체가 막힌다 —
+  // 그걸 빨간 칩으로 띄우면 멀쩡한 배포본이 늘 장애로 보인다.
+  const skip = new Set(opts.skip || [])
+  const unavailable = (why) => ({ ok: true, optional: true, unavailable: true, detail: why, ms: 0 })
+
   const [dart, nps, kipris] = await Promise.all([
     timed(() => checkDart(keys.DART_API_KEY), secrets),
-    timed(() => checkNps(keys.NPS_API_KEY), secrets),
+    skip.has('nps')
+      ? Promise.resolve(unavailable('이 서버에서는 호출할 수 없습니다(국민연금은 한국 IP 만 허용)'))
+      : timed(() => checkNps(keys.NPS_API_KEY), secrets),
     timed(() => checkKipris(keys.KIPRIS_API_KEY), secrets),
-    timed(() => checkNts(keys.NTS_API_KEY), secrets),
   ])
 
   // short 는 좁은 화면용 축약 라벨이다(헤더를 한 줄에 담아야 한다).
