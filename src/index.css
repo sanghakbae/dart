@@ -904,3 +904,9 @@ table.fin.note td.lbl, table.fin.note th.lbl { max-width: 22em; }
 .cmp-sub { display: block; font-size: 13px; font-weight: 400; color: var(--text-3); }
 /* 각 지표에서 가장 나은 값. 색만으로 뜻이 갈리지 않게 굵기도 함께 준다. */
 .cmp-best { font-weight: 700; color: var(--series-1); }
+
+/* ── 우발상황 목록 ────────────────────────────────────── */
+.cont-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 9px; }
+.cont-list li { display: flex; gap: 9px; align-items: flex-start; font-size: 15.5px; }
+.cont-list li .badge { flex: none; margin-top: 2px; }
+.cont-list.muted { color: var(--text-2); }

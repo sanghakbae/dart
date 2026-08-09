@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Card, Badge, Callout, Empty, Seg } from '../ui'
 import { buildChecklist } from '../../lib/analyze/checklist'
+import RelatedPartyCard from '../RelatedPartyCard'
 
 const TONE = {
   good: { badge: 'good', mark: '✓', label: '양호' },
@@ -42,6 +43,9 @@ export default function ChecklistTab({ report, timeline, notes, loading }) {
 
   return (
     <div className="stack-lg">
+      {/* 재무제표 본문에 안 나오고 주석에만 있는 두 가지. 투자 실사에서 반드시 본다. */}
+      <RelatedPartyCard report={report} notes={notes} />
+
       <Card
         title="점검 결과"
         sub={filter === 'all' ? `${result.checked}개 항목` : `${visibleCount}개 항목 · 필터 적용 중`}
