@@ -55,6 +55,9 @@ jobs:
         run: npm run build
         env:
           VITE_PROXY_BASE: ${{ vars.PROXY_BASE }}
+          # 국민연금만 다른 출구를 쓴다(data.go.kr 이 Cloudflare 를 막는다).
+          # Variables → NPS_BASE 에 Functions 주소를 넣으면 그쪽으로 간다.
+          VITE_NPS_BASE: ${{ vars.NPS_BASE }}
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

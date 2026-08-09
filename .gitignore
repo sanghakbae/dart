@@ -8,3 +8,6 @@ public/dart-corp-index.txt
 .DS_Store
 *.log
 .firebase
+
+functions/node_modules
+functions/server

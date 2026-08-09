@@ -1,0 +1,11 @@
+{
+  "name": "corp-finder-functions",
+  "description": "국민연금 프록시 — data.go.kr 이 Cloudflare 출구를 막아 구글 IP 로 나가는 경로가 따로 필요하다",
+  "type": "module",
+  "main": "index.js",
+  "private": true,
+  "engines": { "node": "22" },
+  "dependencies": {
+    "firebase-functions": "^6.1.0"
+  }
+}
