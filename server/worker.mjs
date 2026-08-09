@@ -16,6 +16,7 @@ import { handleNps } from './nps-handler.mjs'
 import { handleKipris } from './kipris-handler.mjs'
 import { handleNts } from './nts-handler.mjs'
 import { handleHealth } from './health-handler.mjs'
+import { resolveKeys } from './api-keys.mjs'
 
 const ALLOWED = [
   'https://dart.sanghak.kr',
@@ -44,8 +45,17 @@ export default {
 
     // /health 는 Worker 자체가 살아 있는지 보는 용도다. 상류를 부르지 않는다.
     if (url.pathname === '/health') {
+      const keys = await resolveKeys(env)
       return json(
-        { ok: true, dart: Boolean(env.DART_API_KEY), nps: Boolean(env.NPS_API_KEY) },
+        {
+          ok: true,
+          dart: Boolean(keys.DART_API_KEY),
+          nps: Boolean(keys.NPS_API_KEY),
+          kipris: Boolean(keys.KIPRIS_API_KEY),
+          nts: Boolean(keys.NTS_API_KEY),
+          // 키를 DB 에서 읽고 있는지. false 면 아직 환경 시크릿을 쓰는 중이다.
+          fromDb: Boolean(env.FIREBASE_SERVICE_ACCOUNT),
+        },
         200,
         allowed ? { 'access-control-allow-origin': allowed } : {}
       )
@@ -75,19 +85,22 @@ export default {
       headers: stripOrigin(request.headers, allowed),
     })
 
+    // 인증키는 관리자 페이지에서 DB 에 등록한 값을 먼저 쓰고, 없으면 환경 시크릿을 쓴다.
+    const keys = await resolveKeys(env)
+
     // /api/health 는 상류를 실제로 한 번씩 불러 본 결과를 준다(화면 상단 상태 칩).
-    if (isHealth) return handleHealth(forwarded, env)
+    if (isHealth) return handleHealth(forwarded, keys)
 
     const response = isNps
-      ? await handleNps(forwarded, env.NPS_API_KEY || '')
+      ? await handleNps(forwarded, keys.NPS_API_KEY)
       : isKipris
-        ? await handleKipris(forwarded, env.KIPRIS_API_KEY || '')
+        ? await handleKipris(forwarded, keys.KIPRIS_API_KEY)
         : isNts
-          ? await handleNts(forwarded, env.NTS_API_KEY || '')
-          : await handleDart(forwarded, env.DART_API_KEY || '')
+          ? await handleNts(forwarded, keys.NTS_API_KEY)
+          : await handleDart(forwarded, keys.DART_API_KEY)
 
     if (!response) return json({ error: '처리할 수 없는 요청입니다.' }, 404, {})
-    return scrub(response, env)
+    return scrub(response, keys)
   },
 }
 
@@ -98,9 +111,9 @@ export default {
  * ("Too many redirects. <url>, <url>")는 그 URL 을 그대로 담는다. 그걸 그대로 내보내면
  * 브라우저에 인증키가 노출된다. 성공 응답은 본문이 클 수 있어 건드리지 않는다.
  */
-async function scrub(response, env) {
+async function scrub(response, resolved) {
   if (response.status < 400) return response
-  const keys = [env.DART_API_KEY, env.NPS_API_KEY, env.KIPRIS_API_KEY, env.NTS_API_KEY].filter((k) => k && k.length >= 8)
+  const keys = Object.values(resolved || {}).filter((k) => k && k.length >= 8)
   if (!keys.length) return response
 
   // 본문을 읽는 순간 원본 Response 는 다시 쓸 수 없다. 지울 게 없더라도

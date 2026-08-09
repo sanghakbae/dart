@@ -870,3 +870,22 @@ table.fin.note td.lbl, table.fin.note th.lbl { max-width: 22em; }
   .card { break-inside: avoid; box-shadow: none; }
   .raw { max-height: none; }
 }
+
+/* ── 인증키 등록(관리자) ──────────────────────────────── */
+.keylist { list-style: none; margin: 0; padding: 0; }
+.keyrow { padding: 14px clamp(12px, 2vw, 20px); border-top: 1px solid var(--border); }
+.keyrow-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.keyrow-head strong { font-size: 16.5px; }
+.keyrow-hint { font-size: 14px; color: var(--text-2); margin: 4px 0 10px; }
+.keyrow-form { display: flex; gap: 8px; flex-wrap: wrap; }
+.keyrow-form input {
+  flex: 1 1 260px;
+  min-width: 0;
+  padding: 8px 11px;
+  font-family: var(--mono);
+  font-size: 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-1);
+  color: var(--text-1);
+}

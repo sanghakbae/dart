@@ -8,12 +8,21 @@ import { handleNps } from './nps-handler.mjs'
 import { handleKipris } from './kipris-handler.mjs'
 import { handleNts } from './nts-handler.mjs'
 import { handleHealth } from './health-handler.mjs'
+import { resolveKeys } from './api-keys.mjs'
 
 export function dartProxy(env = {}) {
-  const dartKey = env.DART_API_KEY || process.env.DART_API_KEY || ''
-  const npsKey = env.NPS_API_KEY || process.env.NPS_API_KEY || ''
-  const kiprisKey = env.KIPRIS_API_KEY || process.env.KIPRIS_API_KEY || ''
-  const ntsKey = env.NTS_API_KEY || process.env.NTS_API_KEY || ''
+  // 개발 서버도 배포본과 같은 규칙을 따른다 — DB(관리자 페이지)에 등록된 키가
+  // 있으면 그걸 쓰고, 없으면 .env 값을 쓴다.
+  const source = {
+    DART_API_KEY: env.DART_API_KEY || process.env.DART_API_KEY || '',
+    NPS_API_KEY: env.NPS_API_KEY || process.env.NPS_API_KEY || '',
+    KIPRIS_API_KEY: env.KIPRIS_API_KEY || process.env.KIPRIS_API_KEY || '',
+    NTS_API_KEY: env.NTS_API_KEY || process.env.NTS_API_KEY || '',
+    FIREBASE_SERVICE_ACCOUNT:
+      env.FIREBASE_SERVICE_ACCOUNT || process.env.FIREBASE_SERVICE_ACCOUNT || '',
+  }
+  const dartKey = source.DART_API_KEY
+  const npsKey = source.NPS_API_KEY
 
   return {
     name: 'dart-proxy',
@@ -35,17 +44,16 @@ export function dartProxy(env = {}) {
         try {
           const url = `http://localhost${req.url}`
           const request = new Request(url, { method: req.method, headers: toHeaders(req.headers) })
+          const keys = await resolveKeys(source)
           const response = isHealth
-            ? await handleHealth(request, {
-                DART_API_KEY: dartKey, NPS_API_KEY: npsKey, KIPRIS_API_KEY: kiprisKey, NTS_API_KEY: ntsKey,
-              })
+            ? await handleHealth(request, keys)
             : req.url.startsWith('/api/nps/')
-              ? await handleNps(request, npsKey)
+              ? await handleNps(request, keys.NPS_API_KEY)
               : req.url.startsWith('/api/kipris/')
-                ? await handleKipris(request, kiprisKey)
+                ? await handleKipris(request, keys.KIPRIS_API_KEY)
                 : req.url.startsWith('/api/nts/')
-                  ? await handleNts(request, ntsKey)
-                  : await handleDart(request, dartKey)
+                  ? await handleNts(request, keys.NTS_API_KEY)
+                  : await handleDart(request, keys.DART_API_KEY)
           if (!response) return next()
           res.statusCode = response.status
           response.headers.forEach((v, k) => res.setHeader(k, v))

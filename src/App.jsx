@@ -484,6 +484,7 @@ export default function App() {
             onBack={() => setAdminView(false)}
             onShare={handleShare}
             sharingKey={sharingKey}
+            user={user}
           />
         ) : !companyKey ? (
           <>

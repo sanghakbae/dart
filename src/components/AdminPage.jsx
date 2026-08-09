@@ -2,12 +2,13 @@ import { useEffect, useMemo, useState } from 'react'
 import { listUsers } from '../lib/usage'
 import { Card, Tile, Empty, Callout, Badge } from './ui'
 import { dateTimeText } from '../lib/format'
+import ApiKeyCard from './ApiKeyCard'
 
 /**
  * 관리자 전용 이용 현황. 보기만 하는 화면이다 — 여기서는 아무것도 지우거나 고치지 않는다.
  * users 컬렉션은 규칙상 관리자만 목록 조회가 되므로, 실패하면 그대로 사유를 보여준다.
  */
-export default function AdminPage({ companies, onBack, onShare, sharingKey }) {
+export default function AdminPage({ companies, onBack, onShare, sharingKey, user }) {
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -100,6 +101,8 @@ export default function AdminPage({ companies, onBack, onShare, sharingKey }) {
           </div>
         )}
       </Card>
+
+      <ApiKeyCard user={user} />
 
       <Card
         title="공통 노출 지정"
