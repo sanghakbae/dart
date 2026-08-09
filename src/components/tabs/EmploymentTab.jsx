@@ -107,13 +107,33 @@ export default function EmploymentTab({ report, timeline }) {
     <div className="stack-lg">
       <Card
         title="고용 현황"
-        sub={`${data.workplace.name} · ${months[0].ym} ~ ${latest.ym}`}
+        sub={`${data.workplace.name}${data.workplace.address ? ` · ${data.workplace.address}` : ''} · ${months[0].ym} ~ ${latest.ym}`}
         right={bar}
       >
         <div className="stack">
           {error && (
             <Callout tone="warn">
               새로 받아오지 못해 저장된 값을 보여줍니다. ({error})
+            </Callout>
+          )}
+
+          {/* 상호가 같은 사업장이 여럿이면 어느 곳을 골랐는지 밝힌다.
+              미래시스템은 동명 22곳 중 양산의 4명짜리 남의 회사가 뽑혀 있었다
+              (매출 605억 회사에 4명). 근거를 보여야 잘못 골랐을 때 알아챈다. */}
+          {(data.candidates || []).length > 1 && (
+            <Callout tone="warn">
+              <span>
+                <strong>{data.workplace.name}</strong>({data.workplace.address})와 <strong>상호가 같은
+                사업장이 {data.candidates.length}곳</strong> 있어, 가입자가 가장 많은 곳을 골랐습니다.
+                감사보고서에 사업자등록번호가 없어 자동으로 특정할 수 없었습니다.
+                <br />
+                다른 후보:{' '}
+                {data.candidates
+                  .filter((c) => c.bizNo !== data.workplace.bizNo)
+                  .slice(0, 5)
+                  .map((c) => `${c.name}(${c.address}) ${c.headcount}명`)
+                  .join(' · ')}
+              </span>
             </Callout>
           )}
           {warning && (

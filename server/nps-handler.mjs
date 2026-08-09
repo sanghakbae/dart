@@ -37,6 +37,9 @@ const CALL_TIMEOUT = 20_000
 // 게이트웨이가 간헐적으로 SERVICETIMEOUT_ERROR(503)를 던진다. 한 번 더 물어보면 대개 온다.
 // 시계열은 월마다 두 번씩 부르므로(13개월 = 26회) 재시도가 없으면 한 번의 딸꾹질에 통째로 실패한다.
 const RETRY_MS = [500, 1500]
+
+/** 동명 사업장이 많을 때 실제 인원을 확인해 볼 최대 개수. 미래시스템은 22곳이었다. */
+const PROBE_LIMIT = 8
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 /**
@@ -223,13 +226,39 @@ export async function handleNps(req, key) {
       const byBizNo = bizNo6 && places.find((p) => String(p.bizNo || '').startsWith(bizNo6))
 
       // 사업자번호로 특정되면 그게 확실하다. 아니면 상호가 맞는 것만 받아들인다.
-      // 점수가 같으면 사람이 많은 쪽이 본사다. 월수로 고르면 "삼성SDS아이누리어린이집"
-      // (18명) 같은 부속 사업장이 본사를 밀어낸다.
       const named = places
         .map((p) => ({ p, score: nameScore(p.name, name) }))
         .filter((x) => x.score > 0)
-        .sort((a, b) => b.score - a.score || (b.p.headcount ?? 0) - (a.p.headcount ?? 0) || b.p.months.length - a.p.months.length)
-      const place = byBizNo || named[0]?.p
+        .sort((a, b) => b.score - a.score || b.p.months.length - a.p.months.length)
+
+      // 상호가 완전히 같은 곳이 여럿이면 검색 결과만으로는 못 가른다.
+      // 검색(getBassInfoSearchV2)은 가입자수를 주지 않아 예전 '사람 많은 쪽' 규칙이
+      // 무력했다 — 미래시스템은 동명 22곳 중 양산의 4명짜리 남의 회사가 뽑혔다
+      // (매출 605억 회사에 4명). 상세 조회로 실제 인원을 확인해 가장 큰 곳을 고른다.
+      let place = byBizNo || named[0]?.p
+      let candidates = []
+      const tied = named.filter((x) => x.score === named[0]?.score)
+      if (!byBizNo && tied.length > 1) {
+        const probed = await Promise.all(
+          tied.slice(0, PROBE_LIMIT).map(async ({ p }) => {
+            const latest = p.months[0]
+            if (!latest) return { p, headcount: 0 }
+            const d = await call('getDetailInfoSearchV2', { seq: latest.seq }, key).catch(() => [])
+            return { p, headcount: num(d[0]?.jnngpCnt) ?? 0 }
+          })
+        )
+        probed.sort((a, b) => b.headcount - a.headcount)
+        place = probed[0]?.p || place
+        // 고른 근거와 나머지 후보를 함께 돌려준다. 잘못 골랐을 때 화면에서 바꿀 수 있어야 한다.
+        candidates = probed.map(({ p, headcount }) => ({
+          id: p.id,
+          name: p.name,
+          bizNo: p.bizNo,
+          address: p.address,
+          headcount,
+          monthCount: p.months.length,
+        }))
+      }
 
       // 이름이 맞는 곳이 없으면 아무거나 고르지 않는다. 무엇이 걸렸는지는 알려 준다.
       if (!place) {
@@ -276,6 +305,8 @@ export async function handleNps(req, key) {
         {
           found: true,
           workplace: { name: place.name, bizNo: place.bizNo, address: place.address, status: place.status },
+          // 동명 사업장이 여럿이라 인원으로 골랐다는 사실과 후보들. 비어 있으면 고민 없이 하나였다는 뜻이다.
+          candidates,
           months,
           note: '국민연금 고지 인원 기준(비정규직 포함). 공단이 1년치만 보관해 그 이전은 조회되지 않습니다.',
         },
