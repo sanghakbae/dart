@@ -84,7 +84,7 @@ export default function DartImport({ onFiles, busy, imported }) {
   return (
     <div className="stack">
       <div>
-        <label className="modal-label" htmlFor="dart-q">DART 에서 회사를 찾아 원문을 바로 가져옵니다</label>
+        <label className="modal-label" htmlFor="dart-q">회사명으로 찾기</label>
         <input
           id="dart-q"
           className="modal-input"

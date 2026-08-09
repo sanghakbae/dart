@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Badge } from './ui'
 import { useHealth } from '../lib/health'
 
@@ -10,6 +11,7 @@ import { useHealth } from '../lib/health'
  */
 function ApiHealth() {
   const { health, error, loading, reload } = useHealth()
+  const [open, setOpen] = useState(false)
 
   // 5분마다 다시 보는데, 그때마다 칩을 걷어내면 상태가 깜빡인다.
   // 한 번이라도 받아 뒀으면 새 결과가 올 때까지 그대로 둔다.
@@ -22,20 +24,48 @@ function ApiHealth() {
     )
   }
 
+  // 평소에는 점 하나로 줄인다. 상태는 문제가 있을 때만 알면 되는 정보인데,
+  // 서비스마다 칩을 띄우면 헤더의 절반을 진단 정보가 차지한다.
+  const services = health?.services || []
+  const down = services.filter((s) => !s.ok && !s.optional)
+  const slow = services.filter((s) => s.ok && s.slow)
+  const tone = down.length ? 'critical' : slow.length ? 'warn' : 'good'
+
   return (
-    <span className="api-health" onClick={reload} title="눌러서 다시 확인">
-      {(health?.services || []).map((s) => (
-        <Badge key={s.id} tone={s.ok ? 'good' : s.slow ? 'warn' : s.optional ? 'muted' : 'critical'} dot>
-          <span
-            className="api-lbl"
-            data-short={s.short || s.label}
-            title={`${s.label}: ${s.detail}${s.ms != null ? ` (${s.ms}ms)` : ''}`}
-          >
-            {s.label}
-          </span>
-        </Badge>
-      ))}
-    </span>
+    <div className="api-health">
+      <button
+        type="button"
+        className={`api-pill api-${tone}`}
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        title={down.length ? `${down.map((s) => s.label).join(', ')} 이상` : '외부 API 정상'}
+      >
+        <i className="dot" aria-hidden="true" />
+        <span className="hide-sm">
+          {down.length ? `API ${down.length}건 이상` : `API ${services.length}개 정상`}
+        </span>
+      </button>
+
+      {open && (
+        <div className="api-pop" role="dialog" aria-label="외부 API 상태">
+          <div className="api-pop-head">
+            <strong>외부 API 상태</strong>
+            <button type="button" className="btn btn-sm btn-ghost" onClick={reload}>다시 확인</button>
+          </div>
+          <ul>
+            {services.map((s) => (
+              <li key={s.id}>
+                <Badge tone={s.ok ? 'good' : s.slow ? 'warn' : s.optional ? 'muted' : 'critical'} dot>
+                  {s.label}
+                </Badge>
+                <span className="api-detail">{s.detail}</span>
+                {s.ms != null && <span className="api-ms">{s.ms}ms</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
   )
 }
 

@@ -498,17 +498,19 @@ export default function App() {
           />
         ) : !companyKey ? (
           <>
-            <UploadZone
-              onFiles={handleFiles}
-              onSample={companies.length ? undefined : loadSample}
-              busy={busy}
-              progress={progress}
-              phase={phase}
-              compact={companies.length > 0}
-            />
-
-            <Card title="DART 에서 가져오기" sub="회사명으로 찾아 공시 원문을 바로 받습니다">
+            {/* 회사를 추가하는 방법이 둘인데 카드가 둘로 갈려 같은 말을 반복했다.
+                하나로 합치고, 더 자주 쓰는 DART 검색을 위에 둔다. 파일 업로드는
+                DART 에 없는 보고서를 넣을 때 쓰는 보조 경로다. */}
+            <Card title="회사 추가" sub="DART 에서 찾아오거나, 가지고 있는 파일을 올립니다">
               <DartImport onFiles={handleFiles} busy={busy} imported={importedPeriods} />
+              <UploadZone
+                onFiles={handleFiles}
+                onSample={companies.length ? undefined : loadSample}
+                busy={busy}
+                progress={progress}
+                phase={phase}
+                compact={companies.length > 0}
+              />
             </Card>
 
             {dbState === 'blocked' && (

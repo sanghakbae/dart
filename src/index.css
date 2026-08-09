@@ -910,3 +910,61 @@ table.fin.note td.lbl, table.fin.note th.lbl { max-width: 22em; }
 .cont-list li { display: flex; gap: 9px; align-items: flex-start; font-size: 15.5px; }
 .cont-list li .badge { flex: none; margin-top: 2px; }
 .cont-list.muted { color: var(--text-2); }
+
+/* ── 외부 API 상태 ────────────────────────────────────── */
+/* 진단 정보라 평소엔 점 하나로 접어 둔다. 서비스마다 칩을 띄우면
+   헤더 절반을 상태 표시가 차지해 정작 쓰는 버튼이 밀린다. */
+.api-health { position: relative; display: flex; }
+.api-pill {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 13.5px; font-weight: 550;
+  white-space: nowrap;
+}
+.api-pill:hover { border-color: var(--border-strong); color: var(--text-1); }
+.api-pill .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.api-good .dot { background: var(--good); }
+.api-warn .dot { background: var(--warning); }
+.api-critical .dot { background: var(--critical); }
+.api-critical { color: var(--critical); border-color: color-mix(in srgb, var(--critical) 35%, transparent); }
+
+.api-pop {
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 40;
+  min-width: min(320px, 88vw);
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.14);
+}
+.api-pop-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.api-pop ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.api-pop li { display: flex; align-items: center; gap: 9px; font-size: 14px; }
+.api-detail { color: var(--text-2); min-width: 0; overflow-wrap: anywhere; }
+.api-ms { margin-left: auto; color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* ── 회사 목록 행 ─────────────────────────────────────── */
+/* 삭제는 자주 쓰는 동작이 아닌데 행마다 빨간 테두리로 서 있어 회사명과 경쟁했다.
+   평소에는 잠잠히 두고, 그 행을 가리킬 때만 드러낸다.
+   (터치 기기에는 hover 가 없으므로 항상 보인다) */
+@media (hover: hover) {
+  .co-del { opacity: 0; transition: opacity 0.12s; }
+  .corow-wrap:hover .co-del,
+  .co-del:focus-visible { opacity: 1; }
+}
+.co-del { border-color: transparent; background: none; color: var(--text-3); }
+.co-del:hover { border-color: color-mix(in srgb, var(--critical) 40%, transparent); color: var(--critical); }
+
+/* 회사 추가 카드 안의 파일 업로드는 보조 경로다.
+   DART 검색과 같은 무게로 두면 무엇을 먼저 해야 할지 알 수 없다. */
+.card .drop {
+  border-style: dashed;
+  background: var(--surface-0);
+  box-shadow: none;
+  margin-top: 14px;
+}
+.drop-lead { margin: 0; font-size: 15px; color: var(--text-2); }

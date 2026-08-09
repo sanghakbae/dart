@@ -134,31 +134,6 @@ async function checkKipris(key) {
 }
 
 /**
- * 국세청 — 실재하는 사업자번호 1건을 조회한다(아이스크림에듀).
- * 이 서비스는 POST 이고, 활용신청이 안 된 키는 code -4 로 떨어진다.
- */
-async function checkNts(key) {
-  if (!key) return { ok: false, detail: '키가 설정되지 않았습니다 (NTS_API_KEY)', optional: true }
-  const url = new URL('https://api.odcloud.kr/api/nts-businessman/v1/status')
-  url.searchParams.set('serviceKey', key)
-  const res = await withTimeout(url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json; charset=utf-8' },
-    body: JSON.stringify({ b_no: ['1208797004'] }),
-  })
-  const text = await res.text()
-  let d
-  try {
-    d = JSON.parse(text)
-  } catch {
-    return { ok: false, detail: `응답을 해석할 수 없습니다 (${res.status})` }
-  }
-  if (Array.isArray(d?.data) && d.data.length) return { ok: true, detail: '정상' }
-  if (d?.code === -4) return { ok: false, detail: '이 서비스에 활용신청되지 않은 키입니다 (-4)' }
-  return { ok: false, detail: `${d?.code ?? res.status} ${d?.msg || ''}`.trim() }
-}
-
-/**
  * @param {Request} req
  * @param {{DART_API_KEY?:string, NPS_API_KEY?:string, KIPRIS_API_KEY?:string, NTS_API_KEY?:string}} keys
  * @returns {Promise<Response|null>}
@@ -176,7 +151,7 @@ export async function handleHealth(req, keys = {}) {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors })
 
   const secrets = [keys.DART_API_KEY, keys.NPS_API_KEY, keys.KIPRIS_API_KEY, keys.NTS_API_KEY].filter(Boolean)
-  const [dart, nps, kipris, nts] = await Promise.all([
+  const [dart, nps, kipris] = await Promise.all([
     timed(() => checkDart(keys.DART_API_KEY), secrets),
     timed(() => checkNps(keys.NPS_API_KEY), secrets),
     timed(() => checkKipris(keys.KIPRIS_API_KEY), secrets),
@@ -188,7 +163,6 @@ export async function handleHealth(req, keys = {}) {
     { id: 'dart', label: 'DART', short: 'DART', ...dart },
     { id: 'nps', label: '국민연금', short: '연금', ...nps },
     { id: 'kipris', label: 'KIPRIS', short: '특허', ...kipris },
-    { id: 'nts', label: '국세청', short: '국세', ...nts },
   ]
   // 선택 서비스(KIPRIS)는 없더라도, 느려서 못 본 것도 전체 실패로 보지 않는다.
   const ok = services.filter((s) => !s.optional).every((s) => s.ok || s.slow)

@@ -49,15 +49,24 @@ export default function UploadZone({ onFiles, onSample, busy, progress, phase, c
         </div>
       ) : (
         <>
-          <h2>{compact ? '감사보고서 추가 업로드' : '감사보고서를 올려주세요'}</h2>
-          <p>
-            {compact
-              ? '다른 사업연도 보고서를 올리면 추이 그래프의 연도축이 자동으로 늘어납니다.'
-              : '파일을 이 영역에 끌어다 놓거나 버튼을 눌러 선택하세요. 감사의견 · 재무제표 · 주석 · 재무비율 · 전년 대비 추이를 자동으로 분석하고 전체 내용을 DB에 저장합니다.'}
-          </p>
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap', marginTop: 14 }}>
+          {/* '회사 추가' 카드 안에서는 DART 검색이 주 경로이고 파일 업로드는 보조다.
+              큰 제목을 두면 카드 안에 카드가 또 있는 것처럼 보여 한 줄로 줄인다. */}
+          {compact ? (
+            <p className="drop-lead">
+              <strong>DART 에 없는 보고서</strong>는 파일로 올리세요 — 끌어다 놓아도 됩니다.
+            </p>
+          ) : (
+            <>
+              <h2>감사보고서를 올려주세요</h2>
+              <p>
+                파일을 이 영역에 끌어다 놓거나 버튼을 눌러 선택하세요. 감사의견 · 재무제표 · 주석 ·
+                재무비율 · 전년 대비 추이를 자동으로 분석하고 전체 내용을 DB에 저장합니다.
+              </p>
+            </>
+          )}
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap', marginTop: compact ? 10 : 14 }}>
             <button className="btn btn-primary" type="button" onClick={() => inputRef.current?.click()}>
-              파일 선택
+              {compact ? '파일 올리기' : '파일 선택'}
             </button>
             {onSample && (
               <button className="btn" type="button" onClick={onSample}>
