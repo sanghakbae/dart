@@ -72,7 +72,15 @@ export async function handleNts(req, key) {
   }
 }
 
-export async function lookup(bizNo, key) {
+/**
+ * 국세청 서버는 딸꾹질이 잦다. 같은 번호를 연달아 불러도 한 번은 200, 다음은
+ * -5(503) 로 갈린다. 한 번의 실패로 화면에 '조회 실패' 를 띄우면 멀쩡한 회사가
+ * 장애로 읽히므로 잠깐 쉬었다 다시 부른다. (국민연금 쪽과 같은 방식)
+ */
+const RETRY_MS = [600, 1800]
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+export async function lookup(bizNo, key, attempt = 0) {
   const target = new URL(NTS)
   target.searchParams.set('serviceKey', key)
   const res = await fetch(target, {
@@ -93,6 +101,19 @@ export async function lookup(bizNo, key) {
   if (body?.code != null && body.code < 0) {
     if (body.code === -4) {
       throw new Error('국세청 상태조회에 신청되지 않은 인증키입니다. data.go.kr 에서 활용신청이 필요합니다. (-4)')
+    }
+    // -5 는 우리 쪽 문제가 아니다. data.go.kr 게이트웨이는 인증키를 알아보고
+    // (모르는 키였다면 -4 가 온다) 국세청 서버로 넘겼는데 그쪽이 응답하지 못한 것이다.
+    // 활용신청 승인 직후에도 한동안 이렇게 나온다. 원문 그대로 두면 우리 버그로 읽힌다.
+    if (body.code === -5) {
+      if (attempt < RETRY_MS.length) {
+        await sleep(RETRY_MS[attempt])
+        return lookup(bizNo, key, attempt + 1)
+      }
+      throw new Error(
+        '국세청 서버가 응답하지 않습니다. 인증키 문제가 아니라 국세청 쪽 일시 장애이거나 ' +
+          '활용신청 승인이 아직 반영되지 않은 상태입니다. 잠시 후 다시 시도해 주세요. (-5)'
+      )
     }
     throw new Error(`국세청 오류 ${body.code}: ${body.msg || ''}`.trim())
   }
