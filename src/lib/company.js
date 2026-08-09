@@ -238,6 +238,61 @@ export function accumulateCompany(prev, report, owner) {
 }
 
 /**
+ * 회사 비교용 최신 연도 지표.
+ *
+ * 비율은 여기서 미리 계산해 둔다 — 비교 화면에서 회사마다 다시 계산하면 어느 연도
+ * 기준인지가 흐려진다. 값이 없으면 0 이 아니라 null 이다(0 은 "0원"으로 읽힌다).
+ *
+ * @param {Array} primary 한 기준(연결/별도) · 한 보고기간 종류로 정렬된 연도별 항목
+ */
+export function compareMetrics(primary) {
+  const rows = [...(primary || [])].sort((a, b) => a.year - b.year)
+  const cur = rows[rows.length - 1]
+  const pri = rows[rows.length - 2]
+  if (!cur) return null
+
+  const v = (row, k) => {
+    const x = row?.values?.[k]
+    return typeof x === 'number' && Number.isFinite(x) ? x : null
+  }
+  const rate = (a, b) => (a == null || !b ? null : (a / b) * 100)
+  const g = (a, b) => (a == null || b == null || b === 0 ? null : ((a - b) / Math.abs(b)) * 100)
+
+  const revenue = v(cur, 'revenue')
+  const equity = v(cur, 'totalEquity')
+
+  // 자본잠식이면 자본을 분모로 쓰는 비율이 뒤집힌다.
+  // 순손실 -72.9억 ÷ 자본 -8.7억 = +8.4% 가 되어, 흑자 회사보다 나빠 보여야 할 회사가
+  // "ROE 8.4%" 로 읽힌다. 부채비율도 마찬가지로 음수가 나온다. 그럴 땐 아예 내지 않는다.
+  const equityUsable = equity != null && equity > 0
+
+  return {
+    year: cur.year,
+    priorYear: pri?.year ?? null,
+    basis: cur.basis || '별도',
+    periodType: cur.periodType || 'FY',
+    years: rows.length,
+    revenue,
+    operatingProfit: v(cur, 'operatingProfit'),
+    netIncome: v(cur, 'netIncome'),
+    totalAssets: v(cur, 'totalAssets'),
+    totalEquity: equity,
+    totalLiabilities: v(cur, 'totalLiabilities'),
+    cash: v(cur, 'cash'),
+    cfOperating: v(cur, 'cfOperating'),
+    revenueGrowth: g(revenue, v(pri, 'revenue')),
+    opProfitGrowth: g(v(cur, 'operatingProfit'), v(pri, 'operatingProfit')),
+    opMargin: rate(v(cur, 'operatingProfit'), revenue),
+    netMargin: rate(v(cur, 'netIncome'), revenue),
+    roe: equityUsable ? rate(v(cur, 'netIncome'), equity) : null,
+    debtRatio: equityUsable ? rate(v(cur, 'totalLiabilities'), equity) : null,
+    // 화면에서 '-' 가 왜 떴는지 설명하려면 이유가 필요하다.
+    capitalImpaired: equity != null && equity <= 0,
+    equityRatio: rate(equity, v(cur, 'totalAssets')),
+  }
+}
+
+/**
  * 회사 문서 → 리스트·스파크라인용 파생값.
  * 추이는 기준을 섞지 않는다: 최신 보고서의 연결/별도 기준을 따르고, 그 안에서
  * 가장 포괄적인 보고기간 종류(연간 우선)만 골라 한 축에 올린다.
@@ -274,6 +329,9 @@ export function companyView(doc) {
   return {
     key: doc.key,
     name: doc.name,
+    // 회사끼리 나란히 놓고 보기 위한 최신 연도 지표. 여기서 만들어 두면 비교 화면이
+    // 회사를 다시 읽지 않아도 된다(목록에 이미 실려 오는 값이다).
+    compare: compareMetrics(primary),
     bases,
     trendBasis: preferredBasis,
     latest: doc.latest || null,

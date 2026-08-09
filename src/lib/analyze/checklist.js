@@ -4,6 +4,7 @@
 // 각 항목은 근거 수치와 원문 위치(주석 번호)를 함께 돌려주어, 사용자가 직접 확인할 수 있게 한다.
 
 import { growth } from './ratios.js'
+import { computeRunway, runwayText } from './runway.js'
 
 const S = { good: 'good', warn: 'warn', bad: 'bad', info: 'info', unknown: 'unknown' }
 
@@ -301,6 +302,33 @@ export function buildChecklist(report, timeline, notes) {
       status: fcf >= 0 ? S.good : S.warn,
       value: won(fcf),
       why: '투자까지 하고도 현금이 남는지 봅니다. 계속 마이너스면 차입·증자에 의존합니다.',
+    })
+  }
+
+  // 런웨이 — 지금 속도로 태우면 언제 돈이 떨어지는가.
+  // 비율은 "이익률이 몇 %"까지만 답하고 "언제 바닥나는가"는 답하지 않는다.
+  const rw = computeRunway(v)
+  if (rw.burning && rw.months != null) {
+    add({
+      id: 'runway',
+      group: '현금흐름',
+      title: '런웨이 (남은 현금 ÷ 소진 속도)',
+      status: rw.months < 6 ? S.bad : rw.months < 12 ? S.warn : rw.months < 24 ? S.info : S.good,
+      value: runwayText(rw.months),
+      why:
+        `보유 현금 ${won(rw.cash)}을 ` +
+        `${rw.basis === 'free' ? '영업+투자' : '영업'} 기준 연 소진액 ` +
+        `${won(rw.basis === 'free' ? rw.burnFree : rw.burnOperating)}으로 나눈 값입니다. ` +
+        '증자·차입이 없다는 전제이므로 실제로는 이보다 길어질 수 있습니다.',
+    })
+  } else if (rw.cash != null && !rw.burning) {
+    add({
+      id: 'runway',
+      group: '현금흐름',
+      title: '런웨이',
+      status: S.good,
+      value: '현금을 태우지 않음',
+      why: '영업·투자 모두에서 현금이 나가지 않아 소진 속도로 계산할 대상이 없습니다.',
     })
   }
 

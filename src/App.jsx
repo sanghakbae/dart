@@ -13,6 +13,7 @@ import { readRoute, writeRoute } from './lib/route'
 import Header from './components/Header'
 import SignIn from './components/SignIn'
 import AdminPage from './components/AdminPage'
+import ComparePage from './components/ComparePage'
 import UploadZone from './components/UploadZone'
 import CompanyList from './components/CompanyList'
 import ConfirmDelete from './components/ConfirmDelete'
@@ -72,6 +73,7 @@ export default function App() {
 
   const { user, ready: authReady, admin } = useAuth()
   const [adminView, setAdminView] = useState(false)
+  const [compareView, setCompareView] = useState(false)
   const [deletingKey, setDeletingKey] = useState(null)
   const [pendingDelete, setPendingDelete] = useState(null)
   const [sharingKey, setSharingKey] = useState(null)
@@ -478,6 +480,15 @@ export default function App() {
           <Card><Empty title="로그인 상태를 확인하는 중입니다…" /></Card>
         ) : authAvailable && !user ? (
           <SignIn configured={authAvailable} />
+        ) : compareView ? (
+          <ComparePage
+            companies={companies}
+            onBack={() => setCompareView(false)}
+            onSelect={(c) => {
+              setCompareView(false)
+              selectCompany(c)
+            }}
+          />
         ) : adminView ? (
           <AdminPage
             companies={companies}
@@ -521,6 +532,9 @@ export default function App() {
                 onSelect={selectCompany}
                 onDelete={handleDelete}
                 deletingKey={deletingKey}
+                onCompare={
+                  companies.filter((c) => c.compare).length > 1 ? () => setCompareView(true) : undefined
+                }
               />
             )}
           </>

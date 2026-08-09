@@ -6,7 +6,7 @@ import { dateTimeText } from '../lib/format'
  * 회사 리스트. 항목은 회사 누적 문서(companies/{key})에서 만든 뷰다.
  * 업로드할 때마다 그 회사 문서에 연도 기준으로 누적되므로 여기서는 결과만 보여준다.
  */
-export default function CompanyList({ companies, activeKey, onSelect, onDelete, deletingKey }) {
+export default function CompanyList({ companies, activeKey, onSelect, onDelete, deletingKey, onCompare }) {
   const [q, setQ] = useState('')
 
   const filtered = useMemo(() => {
@@ -32,7 +32,13 @@ export default function CompanyList({ companies, activeKey, onSelect, onDelete, 
       title="업로드된 회사"
       sub={`${companies.length}개 회사 · 보고서 ${totalReports}건`}
       right={
-        companies.length > 6 ? (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          {onCompare && (
+            <button type="button" className="btn btn-sm" onClick={onCompare}>
+              회사 비교
+            </button>
+          )}
+          {companies.length > 6 ? (
           <input
             type="search"
             value={q}
@@ -45,7 +51,8 @@ export default function CompanyList({ companies, activeKey, onSelect, onDelete, 
               background: 'var(--surface-1)', color: 'var(--text-1)',
             }}
           />
-        ) : null
+          ) : null}
+        </div>
       }
       tight
     >

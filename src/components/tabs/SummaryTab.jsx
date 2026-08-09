@@ -3,6 +3,7 @@ import { AmountTrend, GrowthBars, StructureStack, ProfitWaterfall, CompositionDo
 import { headlineTiles, growthRows, waterfallSteps, assetSlices } from '../../lib/analyze/view'
 import { seriesFor } from '../../lib/analyze/series'
 import { full, abbrev, dateText, fileSize, signedPct, pctText } from '../../lib/format'
+import RunwayCard from '../RunwayCard'
 import BizStatusCard from '../BizStatusCard'
 
 export default function SummaryTab({ report, timeline }) {
@@ -65,6 +66,10 @@ export default function SummaryTab({ report, timeline }) {
 
       {/* 폐업·휴업이면 아래 숫자를 읽는 전제가 달라진다. 지표보다 먼저 온다. */}
       <BizStatusCard report={report} />
+
+      {/* 적자 회사에서 가장 먼저 묻는 질문이라 지표보다 앞에 둔다.
+          현금을 태우지 않는 회사에서는 아무것도 그리지 않는다. */}
+      <RunwayCard report={report} />
 
       <section>
         <div className="card-head" style={{ border: 'none', padding: '0 0 10px' }}>

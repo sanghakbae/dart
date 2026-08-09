@@ -8,6 +8,7 @@ import { hasProxy } from '../../lib/proxyBase.js'
 import { abbrev, full } from '../../lib/format'
 import { useCachedRemote } from '../../lib/useCachedRemote'
 import { HeadcountChart } from '../charts'
+import HiringCard from '../HiringCard'
 
 /**
  * 고용 현황. 감사보고서에는 인원 정보가 없어 국민연금에서 따로 받아 온다.
@@ -233,6 +234,9 @@ export default function EmploymentTab({ report, timeline }) {
           </table>
         </div>
       </Card>
+
+      {/* 인원·인건비 절대값 다음에, 그 증가를 매출이 따라오는지 본다. */}
+      <HiringCard report={report} perHead={perHead} />
 
       {perHead.some((r) => r.revenuePerHead != null || r.payrollPerHead != null) && (
         <Card title="1인당 지표" sub="국민연금 평균 인원 기준" tight>

@@ -889,3 +889,18 @@ table.fin.note td.lbl, table.fin.note th.lbl { max-width: 22em; }
   background: var(--surface-1);
   color: var(--text-1);
 }
+
+/* ── 회사 비교 ────────────────────────────────────────── */
+.cmp-pick { display: flex; gap: 8px; flex-wrap: wrap; }
+.cmp-pick .btn { gap: 7px; }
+.cmp-yr { font-size: 13px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.btn-primary .cmp-yr { color: rgba(255, 255, 255, 0.75); }
+.cmp-name {
+  background: none; border: none; padding: 0;
+  color: var(--series-1); font: inherit; font-weight: 650;
+  text-align: right; cursor: pointer;
+}
+.cmp-name:hover { text-decoration: underline; }
+.cmp-sub { display: block; font-size: 13px; font-weight: 400; color: var(--text-3); }
+/* 각 지표에서 가장 나은 값. 색만으로 뜻이 갈리지 않게 굵기도 함께 준다. */
+.cmp-best { font-weight: 700; color: var(--series-1); }
