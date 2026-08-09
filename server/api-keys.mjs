@@ -22,7 +22,7 @@ const KEYS_TTL = 60_000
 /** 액세스 토큰은 1시간짜리라 만료 1분 전에 갱신한다. */
 const TOKEN_SKEW = 60_000
 
-export const KEY_NAMES = ['DART_API_KEY', 'NPS_API_KEY', 'KIPRIS_API_KEY', 'NTS_API_KEY']
+export const KEY_NAMES = ['DART_API_KEY', 'NPS_API_KEY', 'KIPRIS_API_KEY']
 
 let tokenCache = null // { token, expiresAt }
 let keyCache = null // { values, at }

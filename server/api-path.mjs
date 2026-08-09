@@ -7,7 +7,7 @@
 // 앞부분을 가정하면 배포 형태가 바뀔 때마다 404 가 난다. 아는 접두사가
 // 나오는 지점부터 잘라 쓴다.
 
-const KNOWN = ['/api/nps/', '/api/nts/', '/api/dart/', '/api/kipris/', '/api/health', '/health']
+const KNOWN = ['/api/nps/', '/api/dart/', '/api/kipris/', '/api/health', '/health']
 
 export function apiPathOf(urlish) {
   const raw = String(urlish || '').split('?')[0]

@@ -63,9 +63,6 @@ export default function SummaryTab({ report, timeline }) {
         </div>
       </Card>
 
-      {/* 국세청 사업자상태 카드는 뺐다 — 상류(data.go.kr)가 배포 환경에서 막혀
-          화면에 오류만 남았다. 되살리려면 BizStatusCard 를 다시 넣으면 된다. */}
-
       {/* 적자 회사에서 가장 먼저 묻는 질문이라 지표보다 앞에 둔다.
           현금을 태우지 않는 회사에서는 아무것도 그리지 않는다. */}
       <RunwayCard report={report} />

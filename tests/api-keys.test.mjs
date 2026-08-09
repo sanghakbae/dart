@@ -27,7 +27,6 @@ const ENV = {
   DART_API_KEY: 'env-dart',
   NPS_API_KEY: 'env-nps',
   KIPRIS_API_KEY: 'env-kipris',
-  NTS_API_KEY: 'env-nts',
 }
 
 test('서비스 계정이 없으면 환경 시크릿을 그대로 쓴다', async () => {

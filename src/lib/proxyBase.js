@@ -22,7 +22,7 @@ const RAW = (import.meta.env.VITE_PROXY_BASE || '').trim().replace(/\/+$/, '')
 const NPS_RAW = (import.meta.env.VITE_NPS_BASE || '').trim().replace(/\/+$/, '')
 
 /** 이 접두사로 시작하는 경로만 국민연금 출구로 보낸다. DART·KIPRIS 는 그대로 둔다. */
-const NPS_PATHS = ['/api/nps/', '/api/nts/']
+const NPS_PATHS = ['/api/nps/']
 
 export const PROXY_BASE = RAW
 export const NPS_BASE = NPS_RAW

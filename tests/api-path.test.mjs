@@ -18,7 +18,6 @@ test('쿼리는 떼고 경로만 본다', () => {
 })
 
 test('다른 상류 경로도 같은 규칙', () => {
-  assert.equal(apiPathOf('/api/api/nts/status'), '/api/nts/status')
   assert.equal(apiPathOf('/anything/api/dart/filings'), '/api/dart/filings')
   assert.equal(apiPathOf('/api/health'), '/api/health')
 })

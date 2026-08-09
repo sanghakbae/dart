@@ -30,12 +30,6 @@ export const API_SPECS = [
     hint: 'plus.kipris.or.kr accessKey. data.go.kr 키가 아니다.',
     issuer: 'https://plus.kipris.or.kr',
   },
-  {
-    name: 'NTS_API_KEY',
-    label: '국세청 사업자 상태',
-    hint: 'data.go.kr Decoding 키. Encoding 키를 넣으면 이중 인코딩으로 실패한다.',
-    issuer: 'https://www.data.go.kr',
-  },
 ]
 
 const KEY_DOC = () => doc(db, 'config', 'apiKeys')

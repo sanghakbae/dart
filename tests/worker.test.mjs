@@ -16,11 +16,11 @@ test('health — 키 설정 여부를 알려준다', async () => {
   const r = await w.fetch(req('/health'), {})
   eq(r.status, 200)
   // fromDb 는 인증키를 DB 에서 읽고 있는지. 서비스 계정이 없으면 false 다.
-  eq(await r.json(), { ok: true, dart: false, nps: false, kipris: false, nts: false, fromDb: false })
+  eq(await r.json(), { ok: true, dart: false, nps: false, kipris: false, fromDb: false })
 })
 test('health — 키가 있으면 true', async () => {
   const r = await w.fetch(req('/health'), { DART_API_KEY: 'x', NPS_API_KEY: 'y' })
-  eq(await r.json(), { ok: true, dart: true, nps: true, kipris: false, nts: false, fromDb: false })
+  eq(await r.json(), { ok: true, dart: true, nps: true, kipris: false, fromDb: false })
 })
 test('모르는 경로는 404', async () => {
   eq((await w.fetch(req('/nope'), {})).status, 404)

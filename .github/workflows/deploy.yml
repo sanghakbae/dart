@@ -37,7 +37,7 @@ jobs:
       # Firebase 웹 config 는 클라이언트 번들에 실리는 공개 값이라 src/firebase.js 에
       # 기본값으로 내장되어 있다. 별도 주입이 필요 없다.
       #
-      # DART·국민연금 조회는 정적 호스팅에서 처리할 수 없어 Cloudflare Worker 를 거친다.
+      # DART·특허 조회는 정적 호스팅에서 처리할 수 없어 Cloudflare Worker 를 거친다.
       # 저장소 Variables 에 PROXY_BASE 를 넣어야 배포본에서 동작한다.
       #   Settings → Secrets and variables → Actions → Variables → PROXY_BASE
       #   예: https://dart-proxy.<계정>.workers.dev

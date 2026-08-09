@@ -6,7 +6,6 @@
 import { handleDart } from './dart-handler.mjs'
 import { handleNps } from './nps-handler.mjs'
 import { handleKipris } from './kipris-handler.mjs'
-import { handleNts } from './nts-handler.mjs'
 import { handleHealth } from './health-handler.mjs'
 import { resolveKeys } from './api-keys.mjs'
 
@@ -17,7 +16,6 @@ export function dartProxy(env = {}) {
     DART_API_KEY: env.DART_API_KEY || process.env.DART_API_KEY || '',
     NPS_API_KEY: env.NPS_API_KEY || process.env.NPS_API_KEY || '',
     KIPRIS_API_KEY: env.KIPRIS_API_KEY || process.env.KIPRIS_API_KEY || '',
-    NTS_API_KEY: env.NTS_API_KEY || process.env.NTS_API_KEY || '',
     FIREBASE_SERVICE_ACCOUNT:
       env.FIREBASE_SERVICE_ACCOUNT || process.env.FIREBASE_SERVICE_ACCOUNT || '',
   }
@@ -39,7 +37,7 @@ export function dartProxy(env = {}) {
       }
       server.middlewares.use(async (req, res, next) => {
         const isHealth = req.url === '/api/health' || req.url?.startsWith('/api/health?')
-        const isApi = ['/api/dart/', '/api/nps/', '/api/kipris/', '/api/nts/'].some((p) => req.url?.startsWith(p))
+        const isApi = ['/api/dart/', '/api/nps/', '/api/kipris/'].some((p) => req.url?.startsWith(p))
         if (!isHealth && !isApi) return next()
         try {
           const url = `http://localhost${req.url}`
@@ -51,9 +49,7 @@ export function dartProxy(env = {}) {
               ? await handleNps(request, keys.NPS_API_KEY)
               : req.url.startsWith('/api/kipris/')
                 ? await handleKipris(request, keys.KIPRIS_API_KEY)
-                : req.url.startsWith('/api/nts/')
-                  ? await handleNts(request, keys.NTS_API_KEY)
-                  : await handleDart(request, keys.DART_API_KEY)
+                : await handleDart(request, keys.DART_API_KEY)
           if (!response) return next()
           res.statusCode = response.status
           response.headers.forEach((v, k) => res.setHeader(k, v))

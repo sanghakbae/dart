@@ -14,7 +14,6 @@
 import { handleDart } from './dart-handler.mjs'
 import { handleNps } from './nps-handler.mjs'
 import { handleKipris } from './kipris-handler.mjs'
-import { handleNts } from './nts-handler.mjs'
 import { handleHealth } from './health-handler.mjs'
 import { resolveKeys } from './api-keys.mjs'
 
@@ -52,7 +51,6 @@ export default {
           dart: Boolean(keys.DART_API_KEY),
           nps: Boolean(keys.NPS_API_KEY),
           kipris: Boolean(keys.KIPRIS_API_KEY),
-          nts: Boolean(keys.NTS_API_KEY),
           // 키를 DB 에서 읽고 있는지. false 면 아직 환경 시크릿을 쓰는 중이다.
           fromDb: Boolean(env.FIREBASE_SERVICE_ACCOUNT),
         },
@@ -65,8 +63,7 @@ export default {
     const isDart = url.pathname.startsWith('/api/dart/')
     const isNps = url.pathname.startsWith('/api/nps/')
     const isKipris = url.pathname.startsWith('/api/kipris/')
-    const isNts = url.pathname.startsWith('/api/nts/')
-    if (!isHealth && !isDart && !isNps && !isKipris && !isNts) {
+    if (!isHealth && !isDart && !isNps && !isKipris) {
       return json({ error: `알 수 없는 경로: ${url.pathname}` }, 404, {})
     }
 
@@ -95,9 +92,7 @@ export default {
       ? await handleNps(forwarded, keys.NPS_API_KEY)
       : isKipris
         ? await handleKipris(forwarded, keys.KIPRIS_API_KEY)
-        : isNts
-          ? await handleNts(forwarded, keys.NTS_API_KEY)
-          : await handleDart(forwarded, keys.DART_API_KEY)
+        : await handleDart(forwarded, keys.DART_API_KEY)
 
     if (!response) return json({ error: '처리할 수 없는 요청입니다.' }, 404, {})
     return scrub(response, keys)

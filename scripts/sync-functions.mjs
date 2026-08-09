@@ -16,7 +16,7 @@ const FROM = resolve(ROOT, 'server')
 const TO = resolve(ROOT, 'functions/server')
 
 // Functions 에서 쓰는 것만 옮긴다. worker.mjs·vite 플러그인은 여기 필요 없다.
-const FILES = ['nps-handler.mjs', 'nts-handler.mjs', 'company-name.mjs', 'api-path.mjs']
+const FILES = ['nps-handler.mjs', 'company-name.mjs', 'api-path.mjs']
 
 mkdirSync(TO, { recursive: true })
 for (const f of FILES) {

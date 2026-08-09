@@ -8,13 +8,11 @@
 // 그래서 탭을 열 때마다 받지 않고, 받은 것은 DB 에 넣어 두고 쓴다.
 
 import { fetchEmployment } from './nps/api.js'
-import { fetchBizStatus } from './nts/api.js'
 import { fetchFundingRounds } from './dart/funding.js'
 import { searchCompanies } from './dart/api.js'
 import { proxyUrl, hasProxy } from './proxyBase.js'
-import { saveEmployment, saveFunding, savePatents, saveBizStatus } from './storage.js'
+import { saveEmployment, saveFunding, savePatents } from './storage.js'
 
-export { fetchBizStatus }
 
 /**
  * 특허. 이름 변형(주식회사 유무)과 정확 일치 판정은 프록시가 한다.
@@ -56,10 +54,10 @@ export function fetchEmploymentFor(company, bizNo) {
  * 하나가 실패해도 나머지는 저장한다. 실패는 조용히 넘긴다 —
  * 업로드는 이미 끝났고, 사용자는 탭에서 '받아오기' 로 다시 시도할 수 있다.
  *
- * @returns {Promise<{employment:boolean, funding:boolean, patents:boolean, bizStatus:boolean}>} 저장 성공 여부
+ * @returns {Promise<{employment:boolean, funding:boolean, patents:boolean}>} 저장 성공 여부
  */
 export async function prefetchExternals(companyKey, { company, bizNo } = {}) {
-  const done = { employment: false, funding: false, patents: false, bizStatus: false }
+  const done = { employment: false, funding: false, patents: false }
   if (!companyKey || !company || !hasProxy) return done
 
   const tasks = [

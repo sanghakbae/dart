@@ -18,11 +18,9 @@
 import { onRequest } from 'firebase-functions/v2/https'
 import { defineSecret } from 'firebase-functions/params'
 import { handleNps } from './server/nps-handler.mjs'
-import { handleNts } from './server/nts-handler.mjs'
 import { apiPathOf, apiUrlOf } from './server/api-path.mjs'
 
 const NPS_API_KEY = defineSecret('NPS_API_KEY')
-const NTS_API_KEY = defineSecret('NTS_API_KEY')
 
 // 공개 URL 이므로 오리진을 제한한다. 열어 두면 아무 사이트나 우리 할당량을 태운다.
 const ALLOWED = [
@@ -63,7 +61,7 @@ const json = (res, body, status, headers = {}) => {
 export const api = onRequest(
   {
     region: 'asia-northeast3', // 서울 — 상류가 국내라 왕복이 짧다
-    secrets: [NPS_API_KEY, NTS_API_KEY],
+    secrets: [NPS_API_KEY],
     // 국민연금은 평소에도 6~7초가 걸린다. 짧게 잡으면 멀쩡한 조회가 끊긴다.
     timeoutSeconds: 120,
     memory: '256MiB',
@@ -86,15 +84,13 @@ export const api = onRequest(
     if (path === '/health' || path === '/api/health') {
       return json(
         res,
-        { ok: true, nps: Boolean(NPS_API_KEY.value()), nts: Boolean(NTS_API_KEY.value()) },
+        { ok: true, nps: Boolean(NPS_API_KEY.value()) },
         200,
         allowed ? { 'access-control-allow-origin': allowed } : {}
       )
     }
 
-    const isNps = path.startsWith('/api/nps/')
-    const isNts = path.startsWith('/api/nts/')
-    if (!isNps && !isNts) return json(res, { error: `알 수 없는 경로: ${path}` }, 404)
+    if (!path.startsWith('/api/nps/')) return json(res, { error: `알 수 없는 경로: ${path}` }, 404)
 
     // 브라우저에서 온 요청인데 허용 목록에 없으면 여기서 끊는다.
     // (서버 대 서버 호출은 Origin 헤더가 없어 통과시킨다)
@@ -104,9 +100,7 @@ export const api = onRequest(
 
     const request = toRequest(req)
     try {
-      const response = isNps
-        ? await handleNps(request, NPS_API_KEY.value() || '')
-        : await handleNts(request, NTS_API_KEY.value() || '')
+      const response = await handleNps(request, NPS_API_KEY.value() || '')
       if (!response) return json(res, { error: '처리할 수 없는 요청입니다.' }, 404)
       return send(res, response)
     } catch (e) {
