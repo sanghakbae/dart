@@ -44,8 +44,11 @@ jobs:
       # 기업 검색용 색인(12만 건, 3.6MB). 생성물이라 저장소에 두지 않고 배포 때 굽는다.
       # DART_API_KEY 시크릿이 없으면 건너뛴다 — 그 경우 배포본에서 기업 검색만 안 되고
       # 파일 업로드·분석은 그대로 동작한다.
+      # 색인은 기업 검색에만 쓰인다. opendart 가 러너 IP 를 끊어 실패하더라도
+      # 배포 전체를 막지 않는다(스크립트도 실패 시 0 으로 끝내지만 이중으로 막아 둔다).
       - name: Build DART corp index
         if: env.DART_API_KEY != ''
+        continue-on-error: true
         run: npm run build:corp
 
       - name: Build

@@ -44,10 +44,47 @@ if (!key) {
   process.exit(1)
 }
 
+/**
+ * corpCode.xml 내려받기.
+ *
+ * opendart 는 데이터센터 IP·빈 User-Agent 를 걸러 연결 자체를 끊는 일이 있다
+ * (GitHub Actions 러너에서 10초 연결 타임아웃으로 배포가 통째로 실패했다).
+ * 그래서 브라우저 같은 헤더를 붙이고 넉넉한 시간으로 몇 번 다시 시도한다.
+ */
+const HEADERS = {
+  'user-agent':
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36',
+  accept: 'application/zip,*/*',
+  'accept-language': 'ko-KR,ko;q=0.9,en;q=0.8',
+}
+
+async function download(url, tries = 3) {
+  let last = null
+  for (let i = 1; i <= tries; i++) {
+    try {
+      const res = await fetch(url, { headers: HEADERS, signal: AbortSignal.timeout(90_000) })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return Buffer.from(await res.arrayBuffer())
+    } catch (e) {
+      last = e
+      console.warn(`  내려받기 실패 (${i}/${tries}): ${e?.message || e}`)
+      if (i < tries) await new Promise((r) => setTimeout(r, i * 5000))
+    }
+  }
+  throw last
+}
+
 console.log('corpCode.xml 내려받는 중…')
-const res = await fetch(`https://opendart.fss.or.kr/api/corpCode.xml?crtfc_key=${key}`)
-if (!res.ok) throw new Error(`HTTP ${res.status}`)
-const zip = Buffer.from(await res.arrayBuffer())
+let zip
+try {
+  zip = await download(`https://opendart.fss.or.kr/api/corpCode.xml?crtfc_key=${key}`)
+} catch (e) {
+  // 색인은 '기업 검색' 에만 쓰인다. 이것 때문에 배포 전체를 막지 않는다 —
+  // 업로드·분석·조회는 색인 없이도 그대로 동작한다.
+  console.warn(`기업 검색 색인을 만들지 못했습니다: ${e?.message || e}`)
+  console.warn(existsSync(OUT) ? '기존 색인을 그대로 둡니다.' : '이번 배포에서는 기업 검색만 비활성입니다.')
+  process.exit(0)
+}
 
 // 인증 실패 시 ZIP 대신 XML 에러가 온다.
 if (zip.subarray(0, 5).toString() === '<?xml') {
