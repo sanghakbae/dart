@@ -75,11 +75,8 @@ export async function prefetchExternals(companyKey, { company, bizNo } = {}) {
       const v = await fetchPatents(company)
       await savePatents(companyKey, v)
     }],
-    // 국세청 상태는 상류를 한 번만 부르는 가벼운 조회다. 등록 때 같이 받아 둔다.
-    ['bizStatus', async () => {
-      const v = await fetchBizStatus(company, bizNo)
-      await saveBizStatus(companyKey, v)
-    }],
+    // 국세청 상태 조회는 뺐다. data.go.kr 이 배포 환경(Cloudflare)에서 요청을
+    // 즉시 거절해, 등록할 때마다 실패만 쌓였다. 상류가 열리면 이 항목만 되살리면 된다.
   ]
 
   await Promise.all(

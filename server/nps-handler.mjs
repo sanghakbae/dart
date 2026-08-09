@@ -59,6 +59,21 @@ const GATEWAY_HINT = {
   SERVICE_KEY_IS_NOT_REGISTERED_ERROR: '게이트웨이에 등록되지 않은 인증키입니다.',
 }
 
+/**
+ * 브라우저처럼 보이는 헤더.
+ *
+ * 헤더 없이 부르면 Cloudflare Worker 에서만 SERVICETIMEOUT_ERROR 가 계속 났다
+ * (개발 서버는 7초 걸려 200, Worker 는 2.5초 만에 실패). data.go.kr 도 opendart 처럼
+ * 데이터센터 IP·빈 User-Agent 를 걸러 내는 것으로 보인다 — DART 쪽에서 같은 증상을
+ * 같은 방법으로 풀었다.
+ */
+const UPSTREAM_HEADERS = {
+  'user-agent':
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36',
+  accept: 'application/json,text/plain,*/*',
+  'accept-language': 'ko-KR,ko;q=0.9,en;q=0.8',
+}
+
 async function call(op, params, key, attempt = 0) {
   const url = new URL(`${NPS}/${op}`)
   url.searchParams.set('serviceKey', key)
@@ -70,7 +85,7 @@ async function call(op, params, key, attempt = 0) {
   let res
   let text
   try {
-    res = await fetch(url, { signal: AbortSignal.timeout(CALL_TIMEOUT) })
+    res = await fetch(url, { headers: UPSTREAM_HEADERS, signal: AbortSignal.timeout(CALL_TIMEOUT) })
     text = await res.text()
   } catch (e) {
     // 끊김·시간초과도 대개 일시적이다.

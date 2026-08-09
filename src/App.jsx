@@ -265,7 +265,6 @@ export default function App() {
               got.employment && '고용',
               got.funding && '투자',
               got.patents && '특허',
-              got.bizStatus && '사업자상태',
             ].filter(Boolean)
             if (names.length) toast(`${info.company} — ${names.join('·')} 받아왔습니다`)
           })
