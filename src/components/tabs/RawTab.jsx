@@ -9,6 +9,14 @@ export default function RawTab({ report, rawText, loading, onDownload }) {
   const [shown, setShown] = useState(PAGE)
   const text = rawText || ''
 
+  // DART 에서 가져온 보고서만 접수번호가 있다.
+  //
+  // 접수번호만으로는 PDF 를 바로 받을 수 없다 — 한 공시에 문서가 여러 개라
+  // dcmNo 가 더 필요하고, 없이 부르면 "잘못된 다운로드 요청" 이 뜬다.
+  // 공식 뷰어는 접수번호만으로 열리고 그 안에 DART 가 만든 PDF 내려받기가 있다.
+  const rceptNo = String(report?.meta?.rceptNo || '').replace(/\D/g, '')
+  const dartUrl = rceptNo.length === 14 ? `https://dart.fss.or.kr/dsaf001/main.do?rcpNo=${rceptNo}` : null
+
   const hits = useMemo(() => {
     const term = q.trim()
     if (!term || !text) return null
@@ -32,11 +40,24 @@ export default function RawTab({ report, rawText, loading, onDownload }) {
         title="추출 원문"
         sub={`${text.length.toLocaleString('ko-KR')}자 · ${report.stats?.rowCount?.toLocaleString('ko-KR') || '?'}행${report.stats?.pageCount ? ` · ${report.stats.pageCount}p` : ''}`}
         right={
-          <button className="btn btn-sm" onClick={onDownload} type="button">텍스트 내려받기</button>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {dartUrl && (
+              <a className="btn btn-sm btn-primary" href={dartUrl} target="_blank" rel="noopener noreferrer">
+                DART 원문 보기
+              </a>
+            )}
+            <button className="btn btn-sm" onClick={onDownload} type="button">텍스트 내려받기</button>
+          </div>
         }
       >
         <Callout>
           업로드한 파일에서 추출한 텍스트 전체입니다. 이 원문이 그대로 DB에 저장되어, 분석 로직이 놓친 내용도 여기서 직접 확인할 수 있습니다.
+          {dartUrl && (
+            <>
+              {' '}표·서식 그대로 보거나 PDF 로 받으려면 <strong>DART 원문 보기</strong>를 누르세요 —
+              공시 원본 뷰어가 열리고, 그 안에 DART 가 만든 PDF 내려받기가 있습니다.
+            </>
+          )}
         </Callout>
         <input
           type="search"

@@ -71,6 +71,9 @@ export default function DartImport({ onFiles, busy, imported }) {
         // 파일명에 회사명을 넣어 둔다 — 파서가 회사 판정에 이 이름을 먼저 쓴다.
         const name = `[${picked.name}]${f.reportNm}(${fmtDate(f.rceptDt)}).html`
         const file = await fetchDocumentFile(f.rceptNo, name)
+        // 접수번호를 파일에 얹어 보낸다. 파서가 meta.rceptNo 로 옮겨 담아 두면
+        // 나중에 원문 탭에서 DART 공식 뷰어(=PDF 내려받기가 있는 곳)를 열 수 있다.
+        file.rceptNo = f.rceptNo
         await onFiles([file])
       } catch (e) {
         setError(e.message)

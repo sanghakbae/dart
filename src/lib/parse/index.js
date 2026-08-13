@@ -22,6 +22,9 @@ export async function analyzeFile(file, onProgress) {
   onProgress?.(0.72, '표지·감사의견 해석 중')
 
   const meta = parseMeta(doc)
+  // DART 에서 가져온 파일에는 접수번호가 얹혀 온다. 원문 탭에서 공식 뷰어를
+  // 여는 데 쓴다 — 파일로 올린 보고서에는 없으므로 그때는 링크를 감춘다.
+  if (file?.rceptNo) meta.rceptNo = String(file.rceptNo)
   const narrative = parseNarrative(doc)
 
   onProgress?.(0.82, '재무제표 표 복원 중')
