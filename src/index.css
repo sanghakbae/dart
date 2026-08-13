@@ -966,5 +966,16 @@ table.fin.note td.lbl, table.fin.note th.lbl { max-width: 22em; }
   background: var(--surface-0);
   box-shadow: none;
   margin-top: 14px;
+  /* 한 줄짜리라 큰 영역의 여백을 그대로 쓰면 빈 공간만 넓다 */
+  padding: 14px clamp(14px, 3vw, 24px);
 }
 .drop-lead { margin: 0; font-size: 15px; color: var(--text-2); }
+/* 문구와 버튼을 한 줄에. 좁아지면 버튼이 아래로 내려간다. */
+.drop-row {
+  display: flex; align-items: center; justify-content: center;
+  gap: 14px; flex-wrap: wrap;
+}
+/* 문구는 남는 자리를 채워 가운데 놓이고, 버튼은 오른쪽 끝에 선다.
+   ('.drop p' 의 margin-inline:auto 가 우선순위로 이겨 우연히 그렇게 되던 것을 못박는다) */
+.drop-row .drop-lead { margin: 0 auto; }
+.drop-row .btn { flex: none; }
