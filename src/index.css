@@ -383,7 +383,9 @@ main { padding-bottom: 64px; }
 /* 회사명과 메타를 한 줄에 흘린다(좁아지면 접힌다). 두 줄로 쌓으면 행이 두 배로
    높아져, 회사가 늘수록 목록을 훑기 어려워진다. */
 .co-main { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; min-width: 0; }
-.co-name { font-size: 20px; font-weight: 650; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+/* 카드 제목(.card-head h3, 18.5px)보다 크면 안 된다 — 목록 항목이 그 목록의
+   제목보다 커서 '업로드된 회사' 가 회사명에 눌렸다. 한 단계 아래에 둔다. */
+.co-name { font-size: 17px; font-weight: 650; letter-spacing: -0.01em; overflow-wrap: anywhere; }
 .co-meta {
   display: flex; gap: 6px; flex-wrap: wrap; align-items: baseline;
   /* text-3 은 밝은 테마에서 대비가 3.59:1 로 AA(4.5:1)에 못 미친다.
@@ -852,9 +854,9 @@ table.fin.note td.lbl, table.fin.note th.lbl { max-width: 22em; }
   /* 모바일에서 본문을 줄이지 않는다. 입력은 16px 미만이면 iOS 가 화면을 확대한다. */
   input, select, textarea { font-size: 16px !important; }
   .tab { font-size: 15.5px; padding: 12px 15px; }
-  /* 좁은 화면에서는 행이 세로로 쌓여 폭에 여유가 생긴다. 회사 목록은 가장 자주
-     보는 화면이라 회사명을 데스크톱만큼 두고, 머리줄만 한 단계 줄인다. */
-  .co-name { font-size: 19px; }
+  /* 회사명(.co-name)은 데스크톱과 같은 크기를 쓴다 — 좁은 화면에서는 행이
+     세로로 쌓여 폭에 여유가 생기고, 회사 목록은 가장 자주 보는 화면이다.
+     머리줄만 한 단계 줄인다. */
   .co-head strong { font-size: 20px; }
   .prose { font-size: 16px; }
   table.fin { font-size: 15px; }
