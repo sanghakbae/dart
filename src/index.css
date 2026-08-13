@@ -942,10 +942,16 @@ table.fin.note td.lbl, table.fin.note th.lbl { max-width: 22em; }
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.14);
 }
 .api-pop-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
-.api-pop ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-.api-pop li { display: flex; align-items: center; gap: 9px; font-size: 14px; }
+/* 배지 폭을 줄마다 맞춘다.
+   li 를 각각 flex 로 두면 'DART' 와 '국민연금' 의 폭이 달라 상태 문구가 들쭉날쭉
+   시작한다. 목록 전체를 하나의 그리드로 두고(li 는 display:contents) 첫 칸을
+   가장 긴 이름에 맞추면, 글자 수가 달라도 왼쪽 끝이 한 줄로 선다. */
+.api-pop ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: auto 1fr auto; gap: 8px 9px; align-items: center; }
+.api-pop li { display: contents; font-size: 14px; }
+.api-pop li .badge { justify-content: center; font-size: 14px; }
 .api-detail { color: var(--text-2); min-width: 0; overflow-wrap: anywhere; }
-.api-ms { margin-left: auto; color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* 그리드가 자리를 잡으므로 margin-left:auto 로 밀 필요가 없다 */
+.api-ms { color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
 
 /* ── 회사 목록 행 ─────────────────────────────────────── */
 /* 삭제는 자주 쓰는 동작이 아닌데 행마다 빨간 테두리로 서 있어 회사명과 경쟁했다.

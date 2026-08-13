@@ -64,9 +64,13 @@ function ApiHealth() {
             <strong>외부 API 상태</strong>
             <button type="button" className="btn btn-sm btn-ghost" onClick={reload}>다시 확인</button>
           </div>
-          <ul>
+          {/* 목록 전체가 하나의 그리드다(CSS 참고) — 배지 폭을 줄마다 맞추려는 것.
+              li 가 display:contents 라 칸이 하나라도 빠지면 다음 줄이 밀린다.
+              소요시간이 없어도 빈 칸을 남겨 둔다.
+              role 은 display:contents 로 사라지는 목록 의미를 되살린다. */}
+          <ul role="list">
             {services.map((s) => (
-              <li key={s.id}>
+              <li key={s.id} role="listitem">
                 <Badge
                   tone={
                     s.unavailable ? 'muted' : s.ok ? 'good' : s.slow ? 'warn' : s.optional ? 'muted' : 'critical'
@@ -76,7 +80,7 @@ function ApiHealth() {
                   {s.label}
                 </Badge>
                 <span className="api-detail">{s.detail}</span>
-                {s.ms != null && <span className="api-ms">{s.ms}ms</span>}
+                <span className="api-ms">{s.ms != null ? `${s.ms}ms` : ''}</span>
               </li>
             ))}
           </ul>
