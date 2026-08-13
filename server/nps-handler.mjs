@@ -38,8 +38,12 @@ const CALL_TIMEOUT = 20_000
 // 시계열은 월마다 두 번씩 부르므로(13개월 = 26회) 재시도가 없으면 한 번의 딸꾹질에 통째로 실패한다.
 const RETRY_MS = [500, 1500]
 
-/** 동명 사업장이 많을 때 실제 인원을 확인해 볼 최대 개수. 미래시스템은 22곳이었다. */
-const PROBE_LIMIT = 8
+/**
+ * 이름이 맞는 사업장이 많을 때 실제 인원을 확인해 볼 최대 개수.
+ * 미래시스템은 22곳, 리틀팍스는 20곳이 걸렸다. 확인 하나가 상류 호출 하나라
+ * 무한정 늘릴 수는 없다 — 상호가 그대로인 곳부터 확인하므로 본사는 앞쪽에 든다.
+ */
+const PROBE_LIMIT = 12
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 /**
@@ -226,28 +230,34 @@ export async function handleNps(req, key) {
       const byBizNo = bizNo6 && places.find((p) => String(p.bizNo || '').startsWith(bizNo6))
 
       // 사업자번호로 특정되면 그게 확실하다. 아니면 상호가 맞는 것만 받아들인다.
+      // 상호가 그대로인 곳(score 3)을 앞에 두어, 인원을 확인할 후보에 먼저 들게 한다.
       const named = places
         .map((p) => ({ p, score: nameScore(p.name, name) }))
         .filter((x) => x.score > 0)
         .sort((a, b) => b.score - a.score || b.p.months.length - a.p.months.length)
 
-      // 상호가 완전히 같은 곳이 여럿이면 검색 결과만으로는 못 가른다.
+      // 이름이 맞는 곳이 여럿이면 검색 결과만으로는 못 가른다.
       // 검색(getBassInfoSearchV2)은 가입자수를 주지 않아 예전 '사람 많은 쪽' 규칙이
       // 무력했다 — 미래시스템은 동명 22곳 중 양산의 4명짜리 남의 회사가 뽑혔다
       // (매출 605억 회사에 4명). 상세 조회로 실제 인원을 확인해 가장 큰 곳을 고른다.
+      //
+      // 예전에는 '상호가 똑같은 곳이 둘 이상일 때' 만 확인했다. 그러면 본사가
+      // 지점형 이름이고 작은 곳이 상호와 똑같을 때 작은 쪽이 뽑힌다 — 리틀팍스는
+      // 강남 본사(86명)를 두고 안산의 동명 18명짜리가 뽑혔다(매출 100억 회사에 18명).
+      // 이름이 맞기만 하면 모두 인원을 확인하고, 가장 큰 곳을 고른다.
       let place = byBizNo || named[0]?.p
       let candidates = []
-      const tied = named.filter((x) => x.score === named[0]?.score)
-      if (!byBizNo && tied.length > 1) {
+      if (!byBizNo && named.length > 1) {
         const probed = await Promise.all(
-          tied.slice(0, PROBE_LIMIT).map(async ({ p }) => {
+          named.slice(0, PROBE_LIMIT).map(async ({ p, score }) => {
             const latest = p.months[0]
-            if (!latest) return { p, headcount: 0 }
+            if (!latest) return { p, score, headcount: 0 }
             const d = await call('getDetailInfoSearchV2', { seq: latest.seq }, key).catch(() => [])
-            return { p, headcount: num(d[0]?.jnngpCnt) ?? 0 }
+            return { p, score, headcount: num(d[0]?.jnngpCnt) ?? 0 }
           })
         )
-        probed.sort((a, b) => b.headcount - a.headcount)
+        // 인원이 같으면 상호가 그대로인 쪽이 본사다(지점은 뒤에 말이 붙는다).
+        probed.sort((a, b) => b.headcount - a.headcount || b.score - a.score || b.p.months.length - a.p.months.length)
         place = probed[0]?.p || place
         // 고른 근거와 나머지 후보를 함께 돌려준다. 잘못 골랐을 때 화면에서 바꿀 수 있어야 한다.
         candidates = probed.map(({ p, headcount }) => ({
