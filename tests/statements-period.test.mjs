@@ -64,3 +64,33 @@ test('종류 — 사업보고서 본문의 반기보고서 언급에 속지 않�
 test('종류 — 분기보고서는 분기보고서로', () => {
   assert.equal(parseMeta({ fullText: '분기보고서\n제 7 기 1분기\n두산퓨얼셀' }).docKind, '분기보고서')
 })
+
+// 세스코 감사보고서(2025.12)는 기간을 "제 50 기 2025년 12월 31일 현재" 로 적는다.
+// 연도 뒤 구분자로 점·하이픈만 받던 탓에 제N기↔연도 연결이 끊겼고, 표지 추정값
+// 2024 로 떨어져 2025년 보고서가 2024년 자리를 덮어썼다(보고서가 늘지 않고 사라졌다).
+test('기간 — "2025년 12월 31일" 형식도 제N기와 잇는다', () => {
+  const blocks = [
+    { periodHints: [
+      '제 50 기 2025년 12월 31일 현재',
+      '제 49 기 2024년 12월 31일 현재',
+      '제50기 2025년 01월 01일부터 2025년 12월 31일까지',
+    ] },
+  ]
+  const [cur, prior] = resolvePeriods(blocks, { fiscalYear: 2024, termNo: 50 })
+  assert.equal(cur.year, 2025)
+  assert.equal(prior.year, 2024)
+  assert.equal(cur.source, 'statement')
+})
+
+test('기간 — 기말 표기("제 50 기말 2025년 12월 31일")도 읽는다', () => {
+  const blocks = [{ periodHints: ['제 50 기말 2025년 12월 31일 현재', '제 49 기말 2024년 12월 31일 현재'] }]
+  const [cur] = resolvePeriods(blocks, { fiscalYear: null, termNo: 50 })
+  assert.equal(cur.year, 2025)
+})
+
+test('기간 — 점 표기는 그대로 동작한다(회귀 방지)', () => {
+  const blocks = [{ periodHints: ['제 7 기 2025.12.31 현재', '제 6 기 2024.12.31 현재'] }]
+  const [cur, prior] = resolvePeriods(blocks, { fiscalYear: 2025, termNo: 7 })
+  assert.equal(cur.year, 2025)
+  assert.equal(prior.year, 2024)
+})

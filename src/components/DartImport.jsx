@@ -24,6 +24,8 @@ export default function DartImport({ onFiles, busy, imported }) {
   const [error, setError] = useState(null)
   const [pulling, setPulling] = useState(null)
   const [showPeriodic, setShowPeriodic] = useState(false) // 분기·반기는 접어 둔다
+  // 이름이 같은 회사들의 최근 공시 — code → { latest, count }
+  const [sameName, setSameName] = useState({})
   const seq = useRef(0)
 
   // 검색은 12만 건 색인을 훑으므로 입력이 멈춘 뒤에 돈다.
@@ -43,6 +45,43 @@ export default function DartImport({ onFiles, busy, imported }) {
     }, 250)
     return () => clearTimeout(t)
   }, [term])
+
+  /**
+   * 이름이 똑같은 회사가 둘 이상 걸리면 코드만 보고는 고를 수 없다.
+   *
+   * '세스코' 로 찾으면 둘이 나오는데, 공시가 2014년 1건뿐인 쪽이 먼저 떴다.
+   * 그걸 고르면 2025년 감사보고서가 목록에 없어 "안 받아진다" 로 보인다.
+   * 그래서 겹치는 것만 공시를 확인해 최근 공시일을 적어 주고, 최근 것부터 세운다.
+   */
+  useEffect(() => {
+    const byName = new Map()
+    for (const h of hits) {
+      const k = normalizeCompany(h.name)
+      const g = byName.get(k) || []
+      g.push(h)
+      byName.set(k, g)
+    }
+    // 겹치는 것만 본다 — 검색마다 전부 확인하면 호출이 너무 늘어난다.
+    const dups = [...byName.values()].filter((g) => g.length > 1).flat().slice(0, 6)
+    if (!dups.length) return undefined
+
+    let alive = true
+    Promise.all(
+      dups.map(async (h) => {
+        try {
+          const { list } = await fetchFilings(h.code)
+          return [h.code, { latest: list[0]?.rceptDt || null, count: list.length }]
+        } catch {
+          return [h.code, { latest: null, count: null }]
+        }
+      })
+    ).then((rows) => {
+      if (alive) setSameName((prev) => ({ ...prev, ...Object.fromEntries(rows) }))
+    })
+    return () => {
+      alive = false
+    }
+  }, [hits])
 
   const pick = useCallback(async (c) => {
     setPicked(c)
@@ -109,15 +148,24 @@ export default function DartImport({ onFiles, busy, imported }) {
           )}
           {hits.length > 0 && (
             <ul className="dart-hits">
-              {hits.map((c) => (
-                <li key={c.code}>
-                  <button type="button" onClick={() => pick(c)} disabled={busy}>
-                    <span className="dh-name">{c.name}</span>
-                    {c.stock ? <Badge tone="info">상장 {c.stock}</Badge> : <Badge tone="muted">비상장</Badge>}
-                    <span className="dh-code">{c.code}</span>
-                  </button>
-                </li>
-              ))}
+              {orderHits(hits, sameName).map((c) => {
+                const info = sameName[c.code]
+                return (
+                  <li key={c.code}>
+                    <button type="button" onClick={() => pick(c)} disabled={busy}>
+                      <span className="dh-name">{c.name}</span>
+                      {c.stock ? <Badge tone="info">상장 {c.stock}</Badge> : <Badge tone="muted">비상장</Badge>}
+                      {/* 이름이 같은 회사가 있을 때만 붙는다 — 무엇으로 갈라야 할지 알려주는 값이다 */}
+                      {info && (
+                        <span className="dh-last">
+                          {info.latest ? `최근 공시 ${fmtDate(info.latest)}` : '공시 없음'}
+                        </span>
+                      )}
+                      <span className="dh-code">{c.code}</span>
+                    </button>
+                  </li>
+                )
+              })}
             </ul>
           )}
         </>
@@ -234,6 +282,22 @@ export default function DartImport({ onFiles, busy, imported }) {
       )}
     </div>
   )
+}
+
+/**
+ * 이름이 같은 회사는 최근 공시가 있는 쪽을 위로 올린다.
+ *
+ * DART 색인 순서대로 두면 폐업한 동명 회사가 먼저 뜬다 — 세스코는 공시가
+ * 2014년 1건뿐인 쪽이 먼저였다. 확인이 끝난 것만 다시 세우고 나머지 순서는 건드리지 않는다.
+ */
+function orderHits(hits, sameName) {
+  if (!Object.keys(sameName).length) return hits
+  const key = (c) => sameName[c.code]?.latest || ''
+  return [...hits].sort((a, b) => {
+    // 확인하지 않은 항목끼리는 원래 순서를 지킨다.
+    if (!sameName[a.code] || !sameName[b.code]) return 0
+    return key(b).localeCompare(key(a))
+  })
 }
 
 function fmtDate(d) {
