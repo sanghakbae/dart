@@ -3,7 +3,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { filingKind } from '../server/dart-handler.mjs'
-import { filingPeriodKey, filingBasisCode } from '../src/lib/dart/filingKind.js'
+import { filingPeriodKey, filingBasisCode, rceptNoForReport } from '../src/lib/dart/filingKind.js'
 
 test('상장사 사업보고서는 연간', () => {
   assert.equal(filingKind('사업보고서 (2025.12)'), 'annual')
@@ -172,4 +172,43 @@ test('PDF — 200 인데 PDF 가 아니면 성공으로 넘기지 않는다', as
   )
   assert.equal(r.status, 502)
   assert.match((await r.json()).error, /빈 PDF/)
+})
+
+// ── 접수번호 채우기 ──────────────────────────────────────
+// 접수번호는 나중에 저장하기 시작했다. 먼저 올린 보고서는 원문 PDF 를 못 여는데,
+// 원문을 다시 받을 필요는 없다 — 공시 목록에서 같은 기간·기준의 번호만 얹으면 된다.
+const FILINGS = [
+  { reportNm: '감사보고서 (2025.12)', rceptNo: '20260305000879', rceptDt: '20260305' },
+  { reportNm: '연결감사보고서 (2025.12)', rceptNo: '20260305111111', rceptDt: '20260305' },
+  { reportNm: '[기재정정]사업보고서 (2021.12)', rceptNo: '20220324000472', rceptDt: '20220324' },
+  { reportNm: '사업보고서 (2021.12)', rceptNo: '20220318001076', rceptDt: '20220318' },
+  { reportNm: '반기보고서 (2025.06)', rceptNo: '20250814003390', rceptDt: '20250814' },
+]
+
+test('접수번호 — 같은 기간·기준의 공시를 고른다', () => {
+  assert.equal(rceptNoForReport('2025-FY-s', FILINGS), '20260305000879')
+  assert.equal(rceptNoForReport('2025-FY-c', FILINGS), '20260305111111')
+  assert.equal(rceptNoForReport('2025-H1-s', FILINGS), '20250814003390')
+})
+
+test('접수번호 — 정정본이 원본을 이긴다', () => {
+  // 저장소도 정정본을 우선하므로(amendment-kept) 화면 수치와 PDF 가 어긋나지 않는다.
+  assert.equal(rceptNoForReport('2021-FY-s', FILINGS), '20220324000472')
+  assert.equal(rceptNoForReport('2021-FY-c', FILINGS), '20220324000472')
+})
+
+test('접수번호 — 맞는 공시가 없으면 채우지 않는다', () => {
+  assert.equal(rceptNoForReport('2019-FY-s', FILINGS), null)
+  assert.equal(rceptNoForReport('2025-Q1-s', FILINGS), null)
+})
+
+test('접수번호 — 보고서 ID 형식이 아니면 건드리지 않는다', () => {
+  assert.equal(rceptNoForReport('', FILINGS), null)
+  assert.equal(rceptNoForReport('2025-FY', FILINGS), null)
+  assert.equal(rceptNoForReport('na-FY-s', FILINGS), null)
+  assert.equal(rceptNoForReport('2025-FY-s', []), null)
+})
+
+test('접수번호 — 14자리가 아니면 버린다', () => {
+  assert.equal(rceptNoForReport('2025-FY-s', [{ reportNm: '감사보고서 (2025.12)', rceptNo: '123', rceptDt: '20260305' }]), null)
 })

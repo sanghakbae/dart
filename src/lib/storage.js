@@ -481,6 +481,26 @@ async function commitAll(refs) {
 // ── Firestore ────────────────────────────────────────────────
 const companyDoc = (ck) => doc(db, COL, ck)
 const reportDoc = (ck, rid) => doc(db, COL, ck, 'reports', rid)
+
+/**
+ * 보고서에 DART 접수번호만 채운다.
+ *
+ * 원문 PDF 는 접수번호로 받는다. 그런데 접수번호는 나중에 저장하기 시작했으므로
+ * 먼저 올린 보고서에는 없다. 원문을 다시 받을 필요는 없다 — 공시 목록에 접수번호가
+ * 있으니 그 값만 얹으면 된다. meta 한 칸만 건드려 본문·수치는 그대로 둔다.
+ */
+export async function attachRceptNo(companyKey, reportId, rceptNo) {
+  if (!usesFirestore || !companyKey || !reportId) return false
+  const digits = String(rceptNo || '').replace(/\D/g, '')
+  if (digits.length !== 14) return false
+  try {
+    await updateDoc(reportDoc(companyKey, reportId), { 'meta.rceptNo': digits })
+    return true
+  } catch {
+    // 권한·네트워크 문제면 조용히 넘긴다. 없으면 PDF 카드가 안 뜰 뿐이다.
+    return false
+  }
+}
 const contentCol = (ck, rid) => collection(db, COL, ck, 'reports', rid, 'content')
 
 async function saveToFirestore(report, ck, rid, onProgress) {

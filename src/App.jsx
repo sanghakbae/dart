@@ -2,10 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { analyzeFile } from './lib/parse'
 import {
   saveReport, listCompanies, loadCompanyReports, loadContent, backendLabel,
-  deleteCompany, setCompanyShared, dropLegacyLocalStore,
+  deleteCompany, setCompanyShared, dropLegacyLocalStore, attachRceptNo,
 } from './lib/storage'
 import { buildTimeline, splitByPeriodType, hasBasis } from './lib/analyze/series'
 import { valuesByBasisOf, normalizeCompany } from './lib/company'
+import { rceptNoForReport } from './lib/dart/filingKind'
+import { searchCompanies, fetchFilings } from './lib/dart/api'
+import { hasProxy } from './lib/proxyBase'
 import { useAuth, signOut, authAvailable } from './lib/auth'
 import { touchUser, bumpUpload } from './lib/usage'
 import { prefetchExternals } from './lib/externals'
@@ -178,6 +181,52 @@ export default function App() {
       alive = false
     }
   }, [companyKey, toast])
+
+  /**
+   * 접수번호가 없는 옛 보고서에 접수번호만 채운다.
+   *
+   * 원문 PDF 는 접수번호로 받는데, 그 값은 나중에 저장하기 시작했다. 먼저 올린
+   * 보고서에는 없어서 PDF 카드가 안 뜬다. 원문을 다시 받을 필요는 없다 — 공시
+   * 목록에서 같은 기간·기준의 접수번호를 찾아 meta 한 칸만 얹으면 된다.
+   *
+   * 회사를 열 때 한 번만 돈다. 채운 뒤에는 빠질 보고서가 없으니 다시 돌지 않는다.
+   */
+  const backfilled = useRef(new Set())
+  useEffect(() => {
+    if (!companyKey || !hasProxy) return undefined
+    const missing = reports.filter((r) => r.id && !r.meta?.rceptNo)
+    if (!missing.length || backfilled.current.has(companyKey)) return undefined
+    backfilled.current.add(companyKey)
+
+    let alive = true
+    ;(async () => {
+      try {
+        const name = reports[0]?.meta?.company
+        if (!name) return
+        // 이름이 정확히 같은 회사만 받아들인다 — 남의 공시 번호를 얹으면 엉뚱한 PDF 가 뜬다.
+        const hits = await searchCompanies(name, 40)
+        const norm = (x) => normalizeCompany(x)
+        const hit = hits.find((h) => norm(h.name) === norm(name))
+        if (!hit) return
+        const { list } = await fetchFilings(hit.code)
+        const patched = []
+        for (const r of missing) {
+          const no = rceptNoForReport(r.id, list)
+          if (no && (await attachRceptNo(companyKey, r.id, no))) patched.push([r.id, no])
+        }
+        if (!alive || !patched.length) return
+        const byId = new Map(patched)
+        setReports((cur) =>
+          cur.map((r) => (byId.has(r.id) ? { ...r, meta: { ...r.meta, rceptNo: byId.get(r.id) } } : r))
+        )
+      } catch {
+        /* 못 채워도 화면은 그대로 돈다 — PDF 카드만 안 뜬다 */
+      }
+    })()
+    return () => {
+      alive = false
+    }
+  }, [companyKey, reports])
 
   const active = useMemo(() => reports.find((r) => r.id === activeId) || reports[0] || null, [reports, activeId])
   const contentKey = active ? `${companyKey}/${active.id}` : null

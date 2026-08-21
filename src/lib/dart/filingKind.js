@@ -60,3 +60,36 @@ export function filingBasisCode(nm = '') {
   if (/감사보고서|검토보고서/.test(s)) return 's'
   return null
 }
+
+/**
+ * 저장된 보고서에 붙일 공시를 찾는다.
+ *
+ * 원문 PDF 는 접수번호로 받는데, 접수번호는 나중에 저장하기 시작해서 먼저 올린
+ * 보고서에는 없다. 원문을 다시 받을 필요는 없다 — 공시 목록에서 같은 기간·기준의
+ * 공시를 골라 접수번호만 얹으면 된다.
+ *
+ * 원본과 정정본이 같은 기간을 가리키면 늦게 접수된 쪽을 쓴다. 저장소도 정정본을
+ * 원본보다 우선하므로(saveReport 의 amendment-kept), 화면의 수치와 PDF 가 어긋나지 않는다.
+ *
+ * @param {string} reportId  "2025-FY-s" 같은 보고서 ID
+ * @param {Array} filings    fetchFilings 결과
+ * @returns {string|null} 접수번호
+ */
+export function rceptNoForReport(reportId, filings) {
+  const m = /^(\d{4}-(?:FY|H1|Q1|Q3))-([sc])$/.exec(String(reportId || ''))
+  if (!m) return null
+  const [, periodKey, code] = m
+
+  const hits = (filings || []).filter((f) => {
+    if (filingPeriodKey(f.reportNm) !== periodKey) return null
+    const c = filingBasisCode(f.reportNm)
+    // 이름으로 연결여부를 알 수 있으면 같아야 한다. 사업보고서처럼 모르면 받아들인다.
+    return c == null || c === code
+  })
+  if (!hits.length) return null
+
+  // 늦게 접수된 것(정정본)이 이긴다.
+  hits.sort((a, b) => String(b.rceptDt || '').localeCompare(String(a.rceptDt || '')))
+  const no = String(hits[0].rceptNo || '').replace(/\D/g, '')
+  return no.length === 14 ? no : null
+}
