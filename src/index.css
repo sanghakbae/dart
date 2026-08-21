@@ -990,3 +990,10 @@ table.fin.note td.lbl, table.fin.note th.lbl { max-width: 22em; }
 
 /* 이름이 같은 회사를 가르는 단서 — 최근 공시일 */
 .dh-last { color: var(--text-2); font-size: 13px; font-variant-numeric: tabular-nums; flex: none; }
+
+/* 공시 원본 PDF 뷰어 — 브라우저 내장 뷰어에 맡긴다.
+   높이를 뷰포트에 맞춰 두어야 한 화면에 한 페이지가 온전히 들어온다. */
+.pdfview {
+  display: block; width: 100%; height: min(78vh, 900px);
+  border: 0; background: var(--surface-2);
+}

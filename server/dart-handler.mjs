@@ -310,6 +310,75 @@ export async function handleDart(req, key) {
       return json({ total: list.length, list, truncated }, 200, cors)
     }
 
+/**
+ * DART 공시의 공식 PDF.
+ *
+ * OpenAPI 에는 PDF 가 없다. 공시 뷰어가 쓰는 경로를 그대로 따라가야 하는데
+ * 세 걸음이 필요하다 — 하나라도 빠지면 200 에 0바이트가 온다.
+ *
+ *   1) 뷰어(dsaf001/main.do?rcpNo=) — 세션 쿠키를 받고 dcmNo 를 얻는다.
+ *      접수번호만으로는 PDF 를 못 받는다. 한 공시에 문서가 여러 개라 문서번호가 더 필요하다.
+ *   2) 다운로드 안내(pdf/download/main.do) — 이 걸음을 건너뛰면 pdf.do 가 빈 응답을 준다.
+ *   3) pdf/download/pdf.do — 실제 PDF 바이트.
+ *
+ * 쿠키와 Referer 를 걸음마다 물려 준다.
+ */
+async function fetchDartPdf(rcept) {
+  const A = 'https://dart.fss.or.kr'
+  const viewer = `${A}/dsaf001/main.do?rcpNo=${rcept}`
+  let cookie = ''
+  const take = (res) => {
+    // Workers·Node 모두 여러 개의 set-cookie 를 줄 수 있다.
+    const all = typeof res.headers.getSetCookie === 'function'
+      ? res.headers.getSetCookie()
+      : [res.headers.get('set-cookie')].filter(Boolean)
+    const pairs = all.map((c) => String(c).split(';')[0]).filter(Boolean)
+    if (pairs.length) cookie = [cookie, ...pairs].filter(Boolean).join('; ')
+  }
+  const hop = async (url, referer) => {
+    const res = await fetch(url, {
+      headers: { ...UPSTREAM_HEADERS, ...(cookie ? { cookie } : {}), ...(referer ? { referer } : {}) },
+    })
+    take(res)
+    return res
+  }
+
+  const page = await hop(viewer)
+  if (!page.ok) throw new Error(`DART 뷰어를 열지 못했습니다 (${page.status}).`)
+  const html = await page.text()
+  const dcm = /dcmNo=(\d+)/.exec(html)?.[1]
+  if (!dcm) throw new Error('이 공시에서 PDF 문서번호(dcmNo)를 찾지 못했습니다.')
+
+  const dl = `${A}/pdf/download/main.do?rcp_no=${rcept}&dcm_no=${dcm}`
+  await hop(dl, viewer)
+
+  const res = await hop(`${A}/pdf/download/pdf.do?rcp_no=${rcept}&dcm_no=${dcm}`, dl)
+  if (!res.ok) throw new Error(`PDF 를 받지 못했습니다 (${res.status}).`)
+  const buf = await res.arrayBuffer()
+  // 200 인데 빈 응답·HTML 이 오는 일이 흔하다. PDF 인지 매직으로 확인한다.
+  const head = new TextDecoder().decode(new Uint8Array(buf.slice(0, 5)))
+  if (!head.startsWith('%PDF')) {
+    throw new Error(buf.byteLength ? 'PDF 가 아닌 응답이 왔습니다.' : 'DART 가 빈 PDF 를 돌려줬습니다.')
+  }
+  return buf
+}
+
+    if (op === 'pdf') {
+      const rcept = q.get('rcept')
+      if (!/^\d{14}$/.test(rcept || '')) return json({ error: 'rcept(접수번호 14자리)가 필요합니다.' }, 400, cors)
+      const buf = await fetchDartPdf(rcept)
+      return new Response(buf, {
+        status: 200,
+        headers: {
+          'content-type': 'application/pdf',
+          // 새 창에서 바로 보이게 inline. 파일명은 접수번호로 둔다.
+          'content-disposition': `inline; filename="dart-${rcept}.pdf"`,
+          'cache-control': 'public, max-age=86400',
+          ...cors,
+        },
+      })
+    }
+
     if (op === 'document') {
       const rcept = q.get('rcept')
       if (!/^\d{14}$/.test(rcept || '')) return json({ error: 'rcept(접수번호 14자리)가 필요합니다.' }, 400, cors)

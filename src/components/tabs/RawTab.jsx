@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Card, Empty, Callout } from '../ui'
 import { fileSize } from '../../lib/format'
+import { proxyUrl } from '../../lib/proxyBase.js'
 
 const PAGE = 120_000 // 한 번에 렌더할 글자 수 — 초장문 보고서에서도 브라우저가 버티게
 
@@ -16,6 +17,9 @@ export default function RawTab({ report, rawText, loading, onDownload }) {
   // 공식 뷰어는 접수번호만으로 열리고 그 안에 DART 가 만든 PDF 내려받기가 있다.
   const rceptNo = String(report?.meta?.rceptNo || '').replace(/\D/g, '')
   const dartUrl = rceptNo.length === 14 ? `https://dart.fss.or.kr/dsaf001/main.do?rcpNo=${rceptNo}` : null
+  // 프록시가 뷰어 세션을 대신 밟아 PDF 바이트를 그대로 흘려준다(/api/dart/pdf).
+  // 같은 곳에서 오므로 iframe 에 그대로 얹어 브라우저 PDF 뷰어로 보여줄 수 있다.
+  const pdfUrl = rceptNo.length === 14 ? proxyUrl(`/api/dart/pdf?rcept=${rceptNo}`) : null
 
   const hits = useMemo(() => {
     const term = q.trim()
@@ -36,26 +40,46 @@ export default function RawTab({ report, rawText, loading, onDownload }) {
 
   return (
     <div className="stack-lg">
+      {/* 공시 원본을 먼저 보여준다. 아래 추출 텍스트는 표·서식이 사라진 형태라
+          검색에는 좋지만 '원문' 으로 읽기에는 PDF 가 맞다. */}
+      {pdfUrl && (
+        <Card
+          title="공시 원본"
+          sub="DART 가 만든 PDF 그대로"
+          right={
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <a className="btn btn-sm" href={pdfUrl} target="_blank" rel="noopener noreferrer">새 창으로</a>
+              <a className="btn btn-sm" href={dartUrl} target="_blank" rel="noopener noreferrer">DART 에서 보기</a>
+            </div>
+          }
+          tight
+        >
+          <iframe
+            src={pdfUrl}
+            title="공시 원본 PDF"
+            className="pdfview"
+            /* 로드가 늦어도 화면을 막지 않게 지연 로드 */
+            loading="lazy"
+          />
+          <div className="tnote" style={{ padding: '8px clamp(12px, 2vw, 20px)' }}>
+            PDF 가 보이지 않으면 <strong>새 창으로</strong> 를 누르세요 — 브라우저 설정에 따라 내장 뷰어가 막혀 있을 수 있습니다.
+          </div>
+        </Card>
+      )}
+
       <Card
         title="추출 원문"
         sub={`${text.length.toLocaleString('ko-KR')}자 · ${report.stats?.rowCount?.toLocaleString('ko-KR') || '?'}행${report.stats?.pageCount ? ` · ${report.stats.pageCount}p` : ''}`}
         right={
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {dartUrl && (
-              <a className="btn btn-sm btn-primary" href={dartUrl} target="_blank" rel="noopener noreferrer">
-                DART 원문 보기
-              </a>
-            )}
-            <button className="btn btn-sm" onClick={onDownload} type="button">텍스트 내려받기</button>
-          </div>
+          <button className="btn btn-sm" onClick={onDownload} type="button">텍스트 내려받기</button>
         }
       >
         <Callout>
           업로드한 파일에서 추출한 텍스트 전체입니다. 이 원문이 그대로 DB에 저장되어, 분석 로직이 놓친 내용도 여기서 직접 확인할 수 있습니다.
-          {dartUrl && (
+          {pdfUrl && (
             <>
-              {' '}표·서식 그대로 보거나 PDF 로 받으려면 <strong>DART 원문 보기</strong>를 누르세요 —
-              공시 원본 뷰어가 열리고, 그 안에 DART 가 만든 PDF 내려받기가 있습니다.
+              {' '}표·서식 그대로 보려면 위의 <strong>공시 원본</strong> PDF 를 보세요.
+              이 텍스트는 검색에 쓰기 좋습니다.
             </>
           )}
         </Callout>
