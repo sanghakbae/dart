@@ -90,9 +90,21 @@ export async function handleKipris(req, key) {
  * 바꿔도 같은 30건이 돌아온다. 그걸 모르고 pageNo 로 넘기면 53건짜리 회사가
  * 30건으로 잘린 채 조용히 끝난다. docsStart 는 1부터 세는 레코드 번호다.
  */
-const PAGE_SIZE = 30
+
+/**
+ * 한 번에 받아 보려는 개수.
+ *
+ * 예전에는 30 이었다. 그건 상류 상한이 아니라 아무것도 지정하지 않았을 때 오는
+ * 기본값이었다 — 그 값을 그대로 페이지 크기로 굳혀 두는 바람에 한 회사에 호출을
+ * 여러 번 썼다(알체라 433건 = 15회). 무료 한도가 월 1,000회라 이게 곧 비용이다.
+ *
+ * 상류가 이 개수를 지켜 줄지는 보장이 없다. 그래서 아래 루프는 '요청한 개수' 가
+ * 아니라 '실제로 받은 개수' 만큼 다음 시작점을 옮긴다 — 상류가 30 으로 깎아도
+ * 목록이 어긋나지 않고, 지켜 주면 호출이 그만큼 줄어든다.
+ */
+const PAGE_WANT = 500
 /** 상류 호출 횟수 상한. 무료 한도가 월 1,000회라 한 회사에 이보다 더 쓰지 않는다. */
-const MAX_PAGES = 20
+const MAX_CALLS = 20
 
 const normName = sharedNorm
 
@@ -128,14 +140,15 @@ async function collect(name, key) {
   const patents = []
   let total = 0
   let scanned = 0
-  let page = 1
+  // 다음에 받을 레코드 번호. 받은 개수만큼만 전진한다(상류가 깎아도 어긋나지 않게).
+  let start = 1
 
-  for (; page <= MAX_PAGES; page++) {
+  for (let call = 1; call <= MAX_CALLS; call++) {
     const target = new URL(`${KIPRIS}/applicantNameSearchInfo`)
     target.searchParams.set('applicant', name)
     target.searchParams.set('accessKey', key)
-    target.searchParams.set('docsStart', String((page - 1) * PAGE_SIZE + 1))
-    target.searchParams.set('docsCount', String(PAGE_SIZE))
+    target.searchParams.set('docsStart', String(start))
+    target.searchParams.set('docsCount', String(PAGE_WANT))
 
     const res = await fetch(target, { signal: AbortSignal.timeout(TIMEOUT) })
     const text = await res.text()
@@ -147,10 +160,15 @@ async function collect(name, key) {
         return { error: 'KIPRIS 서비스 사용기간이 아닙니다. 「특허·실용 공개·등록공보」 신청 상태를 확인해 주세요. (31)' }
       }
       if (code === '30') return { error: 'KIPRIS 에 등록되지 않은 키입니다. (30)' }
+      // 원문 문자열(LIMITED_NUMBER_OF_SERVICE_REQUESTS_EXCEEDS_ERROR)만 내보내면
+      // 무엇을 해야 하는지 알 수 없다. 한도는 코드로 우회할 수 없으니 그대로 알린다.
+      if (code === '22') {
+        return { error: 'KIPRIS 호출 한도를 다 썼습니다(무료 계정 월 1,000회). 다음 달에 초기화됩니다. (22)' }
+      }
       return { error: `KIPRIS 오류 ${code} ${msg}`.trim() }
     }
 
-    if (page === 1) total = Number(/<TotalSearchCount>(\d+)/.exec(text)?.[1] ?? 0)
+    if (call === 1) total = Number(/<TotalSearchCount>(\d+)/.exec(text)?.[1] ?? 0)
 
     let onPage = 0
     for (const m of text.matchAll(/<PatentUtilityInfo>([\s\S]*?)<\/PatentUtilityInfo>/g)) {
@@ -180,9 +198,11 @@ async function collect(name, key) {
     // 예전에는 매치가 0건이어도 MAX_PAGES 까지 훑었다. "SK하이닉스" 처럼 표기가
     // 어긋난 이름은 상류에 수만 건이 걸리는데, KIPRIS 한 번 호출이 10초를 넘으니
     // 후보 하나에 몇 분씩 쓰고도 0건으로 끝났다(에스케이하이닉스 599건을 못 찾았다).
-    if (page === 1 && !patents.length) break
+    if (call === 1 && !patents.length) break
 
-    if (onPage < PAGE_SIZE || scanned >= total) break
+    // 더 줄 게 없으면 끝. 받은 만큼만 전진하므로 상류가 몇 건을 주든 이어진다.
+    if (!onPage || scanned >= total) break
+    start += onPage
   }
 
   // 같은 출원이 여러 페이지에 걸쳐 오는 경우가 있어 출원번호로 한 번 걸러 준다.
