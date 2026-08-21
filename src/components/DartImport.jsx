@@ -11,7 +11,7 @@ import { Callout, Empty, Badge } from './ui'
  * 여기서 받으면 원문 XML 전체가 그대로 오므로 그 문제가 없다.
  * 받은 파일은 업로드와 똑같이 onFiles() 로 흘려보낸다 — 파서·저장·화면을 그대로 쓴다.
  *
- * @param {Map<string, Set<string>>} [imported] 정규화한 회사명 → 이미 받은 기간 키("2025-FY")
+ * @param {Map<string, Set<string>>} [imported] 정규화한 회사명 → 이미 받은 보고서 ID("2025-FY-s")
  */
 export default function DartImport({ onFiles, busy, imported }) {
   const [term, setTerm] = useState('')
@@ -288,16 +288,41 @@ export default function DartImport({ onFiles, busy, imported }) {
  * 이름이 같은 회사는 최근 공시가 있는 쪽을 위로 올린다.
  *
  * DART 색인 순서대로 두면 폐업한 동명 회사가 먼저 뜬다 — 세스코는 공시가
- * 2014년 1건뿐인 쪽이 먼저였다. 확인이 끝난 것만 다시 세우고 나머지 순서는 건드리지 않는다.
+ * 2014년 1건뿐인 쪽이 먼저였다.
+ *
+ * 전체를 한 번에 sort 하면 안 된다. '한쪽이 미확인이면 0' 같은 비교자는 추이성이
+ * 깨져(a==b, b==c 인데 a<c) 정렬 결과가 엔진 구현에 좌우된다 — 목록이 통째로
+ * 뒤섞일 수 있다. 그래서 같은 이름 묶음의 자리만 그 안에서 다시 배열한다.
  */
 function orderHits(hits, sameName) {
   if (!Object.keys(sameName).length) return hits
-  const key = (c) => sameName[c.code]?.latest || ''
-  return [...hits].sort((a, b) => {
-    // 확인하지 않은 항목끼리는 원래 순서를 지킨다.
-    if (!sameName[a.code] || !sameName[b.code]) return 0
-    return key(b).localeCompare(key(a))
+
+  // 이름별로 몇 번째 자리에 있는지 모은다.
+  const slots = new Map()
+  hits.forEach((c, i) => {
+    const k = normalizeCompany(c.name)
+    const g = slots.get(k) || []
+    g.push(i)
+    slots.set(k, g)
   })
+
+  const out = [...hits]
+  for (const idx of slots.values()) {
+    if (idx.length < 2) continue
+    // 확인이 끝난 것이 없으면 건드리지 않는다.
+    const known = idx.filter((i) => sameName[hits[i].code])
+    if (!known.length) continue
+    // 최근 공시가 늦은 쪽부터. 확인 못 한 것은 뒤로 보낸다(빈 문자열).
+    const sorted = [...idx].sort((a, b) => {
+      const ka = sameName[hits[a].code]?.latest || ''
+      const kb = sameName[hits[b].code]?.latest || ''
+      return kb.localeCompare(ka) || a - b
+    })
+    idx.forEach((slot, n) => {
+      out[slot] = hits[sorted[n]]
+    })
+  }
+  return out
 }
 
 function fmtDate(d) {

@@ -310,6 +310,9 @@ export async function handleDart(req, key) {
       return json({ total: list.length, list, truncated }, 200, cors)
     }
 
+// PDF 는 몇 MB 씩 오기도 한다. 걸음마다 넉넉히 주되 무한정 매달리지는 않게.
+const PDF_TIMEOUT = 30_000
+
 /**
  * DART 공시의 공식 PDF.
  *
@@ -326,18 +329,27 @@ export async function handleDart(req, key) {
 async function fetchDartPdf(rcept) {
   const A = 'https://dart.fss.or.kr'
   const viewer = `${A}/dsaf001/main.do?rcpNo=${rcept}`
-  let cookie = ''
+  // 이름별로 덮어써야 한다. 그냥 이어 붙이면 걸음마다 같은 쿠키가 쌓여
+  // "JSESSIONID=a; JSESSIONID=b" 처럼 나가고, 어느 쪽을 쓰는지는 상류 마음이다.
+  const jar = new Map()
   const take = (res) => {
-    // Workers·Node 모두 여러 개의 set-cookie 를 줄 수 있다.
+    // Workers·Node 모두 set-cookie 가 여러 개 올 수 있다.
     const all = typeof res.headers.getSetCookie === 'function'
       ? res.headers.getSetCookie()
       : [res.headers.get('set-cookie')].filter(Boolean)
-    const pairs = all.map((c) => String(c).split(';')[0]).filter(Boolean)
-    if (pairs.length) cookie = [cookie, ...pairs].filter(Boolean).join('; ')
+    for (const c of all) {
+      const pair = String(c).split(';')[0]
+      const at = pair.indexOf('=')
+      if (at > 0) jar.set(pair.slice(0, at).trim(), pair.slice(at + 1).trim())
+    }
   }
+  const cookieHeader = () => [...jar].map(([k, v]) => `${k}=${v}`).join('; ')
   const hop = async (url, referer) => {
+    const cookie = cookieHeader()
     const res = await fetch(url, {
       headers: { ...UPSTREAM_HEADERS, ...(cookie ? { cookie } : {}), ...(referer ? { referer } : {}) },
+      // 상류가 매달리면 세 걸음이 겹쳐 요청이 통째로 붙잡힌다.
+      signal: AbortSignal.timeout(PDF_TIMEOUT),
     })
     take(res)
     return res

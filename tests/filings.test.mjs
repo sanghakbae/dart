@@ -99,3 +99,77 @@ test('잠금 — 별도를 받아 뒀다고 연결까지 잠기지 않는다', (
   assert.equal(done('사업보고서 (2025.12)'), true)
   assert.equal(done('사업보고서 (2024.12)'), false)
 })
+
+// ── DART PDF 경로 ────────────────────────────────────────
+// 접수번호만으로는 PDF 를 받을 수 없다. 뷰어에서 dcmNo 와 세션 쿠키를 얻고,
+// 다운로드 안내 페이지를 한 번 거쳐야 pdf.do 가 실제 바이트를 준다.
+import { handleDart } from '../server/dart-handler.mjs'
+
+const dreq = (path) => new Request(`https://proxy.example.dev${path}`)
+const swap = async (impl, fn) => {
+  const real = globalThis.fetch
+  globalThis.fetch = impl
+  try {
+    return await fn()
+  } finally {
+    globalThis.fetch = real
+  }
+}
+
+test('PDF — 접수번호 14자리가 아니면 400', async () => {
+  const r = await handleDart(dreq('/api/dart/pdf?rcept=123'), 'k')
+  assert.equal(r.status, 400)
+})
+
+test('PDF — 뷰어·안내를 거쳐 받고 쿠키를 물려 보낸다', async () => {
+  const seen = []
+  const r = await swap(
+    async (url, init) => {
+      const u = new URL(url)
+      seen.push({ path: u.pathname, cookie: init?.headers?.cookie || '', referer: init?.headers?.referer || '' })
+      if (u.pathname === '/dsaf001/main.do') {
+        return new Response('<a href="/x?dcmNo=777">문서</a>', {
+          status: 200,
+          headers: { 'set-cookie': 'JSESSIONID=abc; Path=/' },
+        })
+      }
+      if (u.pathname === '/pdf/download/main.do') {
+        // 걸음마다 세션이 갱신될 수 있다 — 이름이 같으면 덮어써야 한다.
+        return new Response('<html/>', { status: 200, headers: { 'set-cookie': 'JSESSIONID=def; Path=/' } })
+      }
+      return new Response(new TextEncoder().encode('%PDF-1.4 ...'), { status: 200 })
+    },
+    () => handleDart(dreq('/api/dart/pdf?rcept=20260305000879'), 'k')
+  )
+
+  assert.equal(r.status, 200)
+  assert.equal(r.headers.get('content-type'), 'application/pdf')
+  assert.deepEqual(seen.map((s) => s.path), ['/dsaf001/main.do', '/pdf/download/main.do', '/pdf/download/pdf.do'])
+  // 같은 이름 쿠키가 쌓이지 않고 마지막 값으로 덮인다.
+  assert.equal(seen[2].cookie, 'JSESSIONID=def')
+  assert.ok(seen[2].referer.includes('/pdf/download/main.do'))
+})
+
+test('PDF — dcmNo 가 없으면 무엇이 없는지 알려준다', async () => {
+  const r = await swap(
+    async () => new Response('<html>문서번호 없음</html>', { status: 200 }),
+    () => handleDart(dreq('/api/dart/pdf?rcept=20260305000879'), 'k')
+  )
+  assert.equal(r.status, 502)
+  assert.match((await r.json()).error, /dcmNo/)
+})
+
+test('PDF — 200 인데 PDF 가 아니면 성공으로 넘기지 않는다', async () => {
+  // 세션이 없으면 DART 가 200 에 0바이트를 준다. 그대로 흘리면 빈 뷰어가 뜬다.
+  const r = await swap(
+    async (url) => {
+      const u = new URL(url)
+      if (u.pathname === '/dsaf001/main.do') return new Response('<a href="?dcmNo=1">x</a>', { status: 200 })
+      if (u.pathname === '/pdf/download/main.do') return new Response('<html/>', { status: 200 })
+      return new Response(new Uint8Array(0), { status: 200 })
+    },
+    () => handleDart(dreq('/api/dart/pdf?rcept=20260305000879'), 'k')
+  )
+  assert.equal(r.status, 502)
+  assert.match((await r.json()).error, /빈 PDF/)
+})
